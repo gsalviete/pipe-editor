@@ -1,0 +1,11 @@
+{
+  "name": "pipe-editor",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:backend": "cd backend && npm run start:dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "test:backend": "cd backend && npm test",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install"
+  }
+}
