@@ -32,14 +32,19 @@ let GithubService = GithubService_1 = class GithubService {
     }
     getOAuthRedirectUrl(state) {
         const { clientId } = this.requireCredentials();
+        const frontendUrl = this.config.get('FRONTEND_URL') ?? 'http://localhost:5173';
+        const redirectUri = `${frontendUrl}/`;
         const scopes = ['repo', 'read:user'].join(',');
         return (`https://github.com/login/oauth/authorize` +
             `?client_id=${clientId}` +
+            `&redirect_uri=${encodeURIComponent(redirectUri)}` +
             `&scope=${scopes}` +
             `&state=${state}`);
     }
     async exchangeCodeForToken(code) {
         const { clientId, clientSecret } = this.requireCredentials();
+        const frontendUrl = this.config.get('FRONTEND_URL') ?? 'http://localhost:5173';
+        const redirectUri = `${frontendUrl}/`;
         const response = await fetch('https://github.com/login/oauth/access_token', {
             method: 'POST',
             headers: {
@@ -50,6 +55,7 @@ let GithubService = GithubService_1 = class GithubService {
                 client_id: clientId,
                 client_secret: clientSecret,
                 code,
+                redirect_uri: redirectUri,
             }),
         });
         const data = (await response.json());
