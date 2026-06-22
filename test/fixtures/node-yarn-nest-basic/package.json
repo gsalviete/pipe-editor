@@ -1,0 +1,12 @@
+{
+  "name": "node-yarn-nest-basic",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "yarn@4.0.0",
+  "engines": { "node": "20" },
+  "scripts": {
+    "build": "tsc",
+    "lint": "echo lint && exit 0",
+    "test": "echo test && exit 0"
+  }
+}

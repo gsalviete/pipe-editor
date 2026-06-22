@@ -1,10 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const core_1 = require("@nestjs/core");
+exports.BIND_ADDRESS = void 0;
+exports.createApp = createApp;
 const common_1 = require("@nestjs/common");
+const core_1 = require("@nestjs/core");
 const swagger_1 = require("@nestjs/swagger");
 const app_module_1 = require("./app.module");
-async function bootstrap() {
+exports.BIND_ADDRESS = '127.0.0.1';
+async function createApp() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     app.enableCors({
         origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
@@ -23,10 +26,24 @@ async function bootstrap() {
         .build();
     const document = swagger_1.SwaggerModule.createDocument(app, config);
     swagger_1.SwaggerModule.setup('api/docs', app, document);
-    const port = process.env.PORT ?? 3000;
-    await app.listen(port);
-    console.log(`Backend running at http://localhost:${port}`);
-    console.log(`Swagger docs: http://localhost:${port}/api/docs`);
+    return app;
 }
-bootstrap();
+async function bootstrap() {
+    let app;
+    try {
+        app = await createApp();
+    }
+    catch (err) {
+        console.error('Backend refused to start.');
+        console.error(err.message);
+        process.exit(1);
+    }
+    const port = Number(process.env.PORT ?? 3000);
+    await app.listen(port, exports.BIND_ADDRESS);
+    console.log(`Backend running at http://${exports.BIND_ADDRESS}:${port}`);
+    console.log(`Swagger docs: http://${exports.BIND_ADDRESS}:${port}/api/docs`);
+}
+if (require.main === module) {
+    void bootstrap();
+}
 //# sourceMappingURL=main.js.map

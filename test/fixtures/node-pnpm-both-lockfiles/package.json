@@ -1,0 +1,7 @@
+{
+  "name": "node-pnpm-both-lockfiles",
+  "version": "0.1.0",
+  "private": true,
+  "engines": { "node": "20" },
+  "scripts": {}
+}

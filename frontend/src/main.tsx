@@ -1,10 +1,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { App } from './App';
+import { Editor } from './editor/Editor';
 import './styles/index.css';
+import './editor/editor.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <Editor />
   </React.StrictMode>,
 );

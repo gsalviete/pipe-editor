@@ -1,0 +1,78 @@
+{
+  "version": "0.1.0",
+  "project": {
+    "name": "node-pnpm-nest-basic",
+    "rootPath": "/abs/path/to/node-pnpm-nest-basic",
+    "language": "typescript",
+    "runtime": {
+      "name": "node",
+      "version": "20"
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": "9"
+    }
+  },
+  "stages": [
+    {
+      "id": "install",
+      "name": "Install",
+      "enabled": true,
+      "dependsOn": [],
+      "container": {
+        "image": "node:20-alpine"
+      },
+      "steps": [
+        {
+          "id": "install-deps",
+          "run": "corepack enable && pnpm install --frozen-lockfile",
+          "workingDir": ".",
+          "env": {}
+        }
+      ]
+    },
+    {
+      "id": "lint",
+      "name": "Lint",
+      "enabled": true,
+      "dependsOn": [
+        "install"
+      ],
+      "container": {
+        "image": "node:20-alpine"
+      },
+      "steps": [
+        {
+          "id": "lint",
+          "run": "pnpm lint",
+          "workingDir": ".",
+          "env": {}
+        }
+      ]
+    },
+    {
+      "id": "test",
+      "name": "Test",
+      "enabled": true,
+      "dependsOn": [
+        "lint"
+      ],
+      "container": {
+        "image": "node:20-alpine"
+      },
+      "steps": [
+        {
+          "id": "test",
+          "run": "pnpm test",
+          "workingDir": ".",
+          "env": {}
+        }
+      ]
+    }
+  ],
+  "unresolved": [],
+  "metadata": {
+    "generatedAt": "2026-06-15T10:00:00Z",
+    "detectorVersion": "0.1.0"
+  }
+}

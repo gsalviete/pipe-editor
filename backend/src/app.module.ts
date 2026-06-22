@@ -5,6 +5,7 @@ import { ParserModule } from './modules/parser/parser.module';
 import { GraphModule } from './modules/graph/graph.module';
 import { LogsModule } from './modules/logs/logs.module';
 import { DemoModule } from './modules/demo/demo.module';
+import { EditorApiModule } from './modules/editor-api';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { DemoModule } from './modules/demo/demo.module';
     GraphModule,
     LogsModule,
     DemoModule,
+    EditorApiModule,
   ],
 })
 export class AppModule {}

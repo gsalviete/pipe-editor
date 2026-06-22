@@ -14,6 +14,7 @@ const parser_module_1 = require("./modules/parser/parser.module");
 const graph_module_1 = require("./modules/graph/graph.module");
 const logs_module_1 = require("./modules/logs/logs.module");
 const demo_module_1 = require("./modules/demo/demo.module");
+const editor_api_1 = require("./modules/editor-api");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -30,6 +31,7 @@ exports.AppModule = AppModule = __decorate([
             graph_module_1.GraphModule,
             logs_module_1.LogsModule,
             demo_module_1.DemoModule,
+            editor_api_1.EditorApiModule,
         ],
     })
 ], AppModule);
