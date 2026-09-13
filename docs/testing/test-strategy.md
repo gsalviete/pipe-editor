@@ -53,7 +53,7 @@ its Acceptance Criteria section; this is the consolidated view.
 | IR-AC-008 | T-IR-008 (`canonical.spec.ts` — determinism modulo generatedAt) | ✅ |
 | IR-AC-009 | T-IR-009 (`validate.spec.ts` — empty stages array validates) | ✅ |
 | IR-AC-010 | T-IR-010 (`canonical.spec.ts` — byte-identical canonical JSON) | ✅ |
-| IR-AC-011 | T-IR-011 (`canonical.spec.ts` — `enabled:false` survives canonicalization; Executor/Generator halves pending) | ◑ |
+| IR-AC-011 | T-IR-011 (`canonical.spec.ts` — `enabled:false` survives canonicalization) + T-EXEC-004/005 (executor reports it `skipped:disabled`) + T-DOCKER-002/011 (Dockerfile takes the "disabled" single-stage variant) + `export.spec.ts` (both CI exporters omit it via the effective chain) + T-EDITOR-014/019 (editor round-trips it) | ✅ |
 | IR-AC-012 | T-IR-012 (`validate.spec.ts` — out-of-set read rejected as rule defect); also T-DET-002 | ✅ |
 | IR-AC-013 | T-IR-013 (`validate.spec.ts` — medium commits nothing, high commits); also T-DET-003 | ✅ |
 | IR-AC-014 | T-IR-014 (`validate.spec.ts` — monorepo rootPath is the pointed-at folder); also T-DET-012 | ✅ |
@@ -78,6 +78,23 @@ its Acceptance Criteria section; this is the consolidated view.
 | DOCKER-AC-011 | T-DOCKER-011 (`generate.spec.ts` — behavioral toggle test: flipping `build.enabled` between calls flips output) | ✅ |
 | DOCKER-AC-012 | T-DOCKER-012 (`generate.spec.ts` — build with zero steps → "zero steps" golden) | ✅ |
 | DOCKER-AC-013 | T-DOCKER-013 (`generate.spec.ts` — all stages disabled → variant 1 "disabled" golden; amendment surfaced by EDITOR's `/api/generate`) | ✅ |
+| EXEC-AC-001 | T-EXEC-001 (`execute.pure.spec.ts` — invalid IR rejected, no containers started) | ✅ |
+| EXEC-AC-002 | T-EXEC-002 (`execute.pure.spec.ts` — PM-null resolves unrunnable with the field cited) | ✅ |
+| EXEC-AC-003 | T-EXEC-003 (`execute.pure.spec.ts` — runtime-version-null resolves unrunnable) | ✅ |
+| EXEC-AC-004 | T-EXEC-004 (`execute.pure.spec.ts` — all-disabled chain is unrunnable, every stage reported skipped:disabled) | ✅ |
+| EXEC-AC-005 | T-EXEC-005 (`execute.pure.spec.ts` — disabled stages always surface; aggregate driven by the rest) | ✅ |
+| EXEC-AC-006 | T-EXEC-006 (`execute.docker.spec.ts` — stage runs in a fresh container, /workspace mounted, container removed) | ✅ |
+| EXEC-AC-007 | T-EXEC-007 (`execute.docker.spec.ts` — no --network=host, no --privileged, no docker socket) | ✅ |
+| EXEC-AC-008 | T-EXEC-008 (`execute.docker.spec.ts` — host env does not leak; constructed base env and step env do appear) | ✅ |
+| EXEC-AC-009 | T-EXEC-009 (`execute.docker.spec.ts` — host projectPath byte-identical after the run) | ✅ |
+| EXEC-AC-010 | T-EXEC-010 (`execute.docker.spec.ts` — docker-build reported skipped:docker-build-delegated, no container) | ✅ |
+| EXEC-AC-011 | T-EXEC-011 (`execute.docker.spec.ts` — headline slice — install/lint/test/build pass in real containers) | ✅ |
+| EXEC-AC-012 | T-EXEC-012 (`execute.docker.spec.ts` — failing test stage stops the chain; downstream skipped:dependency-failed) | ✅ |
+| EXEC-AC-013 | T-EXEC-013 (`execute.docker.spec.ts` — abort mid-run leaves no containers; aggregate aborted) | ✅ |
+| EXEC-AC-014 | T-EXEC-014 (`execute.docker.spec.ts` — unpullable image fails with the docker diagnostic in stderr) | ✅ |
+| EXEC-AC-015 | T-EXEC-015 (`execute.pure.spec.ts` — two runs on unchanged input agree on status and exitCode) | ✅ |
+| EXEC-AC-016 | T-EXEC-016 (`execute.docker.spec.ts` — exclusions apply once at copy time; build output reaches later stages) | ✅ |
+| EXEC-AC-017 | T-EXEC-017 (`execute.docker.spec.ts` — absent upstream fails honestly with the real missing-deps diagnostic) | ✅ |
 | DET-AC-001 | T-DET-001 (regression-lock against `expected-ir.json` modulo rootPath + generatedAt) | ✅ |
 | DET-AC-002 | T-DET-002 (manifest-set frontier audit at construction) | ✅ |
 | DET-AC-003 | T-DET-003 × 4 (all four IR-FR-009 truth-table rows on synthetic rules) | ✅ |

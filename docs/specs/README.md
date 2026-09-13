@@ -45,12 +45,12 @@ with a real consumer* before the expensive components are built.
 
 | # | Spec | Component | Status | Notes |
 |---|---|---|---|---|
-| 1 | [`pipeline-ir.spec.md`](./pipeline-ir.spec.md) | `IR` | ✅ Accepted | The central contract. Settles the three open boundary decisions. |
-| 2 | [`dockerfile-generator.spec.md`](./dockerfile-generator.spec.md) | `DOCKER` | ✅ Accepted | Cheap consumer that validates the IR before it hardens. |
-| 3 | [`detector-engine.spec.md`](./detector-engine.spec.md) | `DET` | ✅ Accepted | How the project is traversed and reported. Pairs with [Detection Rules](../rules/detection-rules.md). |
-| 4 | [`pipeline-executor.spec.md`](./pipeline-executor.spec.md) | `EXEC` | ✅ Accepted | The expensive component. Accepted 2026-06-22; introduces the cross-cutting `findUnrunnableReason` helper in `@modules/ir` consumed by EXEC, DOCKER, and EDITOR. |
+| 1 | [`pipeline-ir.spec.md`](./pipeline-ir.spec.md) | `IR` | ✅ Implemented | The central contract. Settles the three open boundary decisions. |
+| 2 | [`dockerfile-generator.spec.md`](./dockerfile-generator.spec.md) | `DOCKER` | ✅ Implemented | Cheap consumer that validates the IR before it hardens. |
+| 3 | [`detector-engine.spec.md`](./detector-engine.spec.md) | `DET` | ✅ Implemented | How the project is traversed and reported. Pairs with [Detection Rules](../rules/detection-rules.md). |
+| 4 | [`pipeline-executor.spec.md`](./pipeline-executor.spec.md) | `EXEC` | ✅ Implemented | The expensive component. Accepted 2026-06-22; introduces the cross-cutting `findUnrunnableReason` helper in `@modules/ir` consumed by EXEC, DOCKER, and EDITOR. |
 | 5 | `github-actions-generator.spec.md` | `GHA` | ☐ Not started | Co-designed with the executor for fidelity (same IR, two render targets). |
-| 6 | [`visual-editor.spec.md`](./visual-editor.spec.md) | `EDITOR` | ✅ Accepted | Edits the IR. Comes last; depends on everything. Pairs with [ADR-0008](../adr/0008-workspace-root-containment-for-detect-endpoint.md). Accepted 2026-06-21. |
+| 6 | [`visual-editor.spec.md`](./visual-editor.spec.md) | `EDITOR` | ✅ Implemented | Edits the IR. Comes last; depends on everything. Pairs with [ADR-0008](../adr/0008-workspace-root-containment-for-detect-endpoint.md). Accepted 2026-06-21. |
 | 7 | [`product-shell.spec.md`](./product-shell.spec.md) | `PRODUCT` | ✅ Implemented | Cross-cutting productization and experience hardening. Verified on desktop/mobile plus the full build and test gates. |
 | 8 | [`workspace-bundle.spec.md`](./workspace-bundle.spec.md) | `WORKSPACE` | ✅ Implemented | Post-MVP multi-service discovery and portable Docker/Compose/basic-CI bundle. |
 
@@ -67,3 +67,29 @@ The Detector Engine spec was Accepted on 2026-06-15 and then amended in place
 on the same date (the catalogue authoring stressed the `Case` contract); the
 amendment is recorded in that spec's changelog. Status remains Accepted because
 the widening is strictly additive — the engine spec's authority is unchanged.
+
+## Status advance, 2026-09-13
+
+`IR`, `DOCKER`, `DET`, `EXEC` and `EDITOR` moved **Accepted → Implemented**.
+
+Per the lifecycle above, *Implemented* means the component exists and every
+acceptance criterion is covered by passing tests. All five had satisfied that
+for some time; the status simply was never advanced, and the adversarial
+review (**SDD-03**) pointed out that the board therefore understated the
+project. Two things had to be true before the advance was honest, and both
+were done first:
+
+1. **`pipeline-executor.spec.md` had no traceability at all.** Its 17
+   criteria were tested — `execute.pure.spec.ts`, `execute.docker.spec.ts`,
+   `workspace.spec.ts`, `output-buffer.spec.ts` — but
+   `test-strategy.md` contained zero `EXEC-AC` rows, and by the project's
+   own Definition of Done a criterion with no row is not covered. The 17
+   rows are now there.
+2. **`IR-AC-011` was the last partial row.** It asserts a disabled Stage is
+   round-tripped by the editor, skipped by the executor and omitted from both
+   generated artifacts; only the first was traced. The other two halves have
+   been covered since EXEC and DOCKER landed, so the row now cites all of
+   them.
+
+`GHA` remains the one spec that is not started — see `CI-EXPORT` in the
+retroactive specs, which covers the code that shipped in its place.
