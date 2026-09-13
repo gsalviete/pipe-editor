@@ -30,6 +30,10 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- The executor now runs a stage's steps as a script under `set -e` rather than
+  joining them with ` && `, so a step ending in a comment can no longer comment
+  out the steps after it, while a failing step still aborts the stage.
+
 - Both CI exporters now refuse an IR with unresolved required fields, the way
   the Dockerfile generator already did. A direct module caller previously got a
   workflow whose base image was the `node:lts-alpine` fallback — a floating tag
