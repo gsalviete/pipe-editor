@@ -64,6 +64,9 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- `Editor.tsx` sheds the stage-chain renderers and the autosave feature into
+  `StageChain.tsx` and `useAutosave.ts`, so each is readable on its own.
+
 - The Loaded IR snapshot is frozen at every level, not just the top, so the
   immutability the editor promises is enforced structurally rather than only
   asserted behaviourally.
