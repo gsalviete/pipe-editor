@@ -442,7 +442,11 @@ describe('Editor product features', () => {
     await waitFor(() => screen.getByTestId('chain'));
     expect(screen.getByText(/imported from my-pipeline.json/)).toBeInTheDocument();
     expect(screen.queryByTestId('run-panel')).toBeNull();
-    expect(screen.getByText(/no local project to run it against/i)).toBeInTheDocument();
+    // UX-07 (superseded behaviour): this used to read "Detect a workspace
+    // project to unlock ▶ Run", which meant losing the import. It now
+    // offers to bind a folder and keep the imported document.
+    expect(screen.getByTestId('bind-folder')).toBeInTheDocument();
+    expect(screen.getByText(/not tied to a project yet/i)).toBeInTheDocument();
   });
 
   it('rejects an invalid imported pipeline with a validation message', async () => {

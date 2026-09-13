@@ -10,7 +10,7 @@ import {
   type WorkspacePlan,
   type WorkspaceService,
 } from './api';
-import { CopyButton, download } from './ui';
+import { CopyButton, download, downloadZip } from './ui';
 
 const EDITABLE_STAGE_IDS = new Set(['install', 'lint', 'test', 'build']);
 
@@ -470,6 +470,22 @@ function ArtifactBrowser({
         <span className="workspace-check-summary">
           <Glyph>✓</Glyph> {passed} checks passed
         </span>
+        <button
+          type="button"
+          className="btn btn--small"
+          aria-label="Download all artifacts as a zip"
+          onClick={() =>
+            void downloadZip(
+              'pipe-editor-bundle.zip',
+              bundle.artifacts.map((artifact) => ({
+                path: artifact.path,
+                content: artifact.content,
+              })),
+            )
+          }
+        >
+          <Glyph>↓</Glyph> Download all ({bundle.artifacts.length})
+        </button>
       </header>
       <div className="workspace-artifacts__body">
         <nav aria-label="Generated files">
@@ -494,7 +510,13 @@ function ArtifactBrowser({
               type="button"
               className="btn btn--small"
               onClick={() =>
-                download(active.path.replace(/\//g, '__'), active.content, 'text/plain')
+                // UX-03: the basename, not the path with separators mangled
+                // into `__`. Use "Download all" to keep the paths.
+                download(
+                  active.path.split('/').pop() ?? active.path,
+                  active.content,
+                  'text/plain',
+                )
               }
             >
               <Glyph>↓</Glyph> Download

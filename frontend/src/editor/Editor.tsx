@@ -469,6 +469,64 @@ function UnresolvedPrompt({
   );
 }
 
+/**
+ * UX-07 — bind an imported pipeline to a folder.
+ *
+ * Without this the only route back to a runnable pipeline was Detect, which
+ * replaces the imported document with a freshly detected one — so the user
+ * had to choose between running and keeping what they imported.
+ */
+function BindFolderPrompt({
+  onBind,
+  onBrowse,
+  error,
+}: {
+  onBind: (path: string) => void;
+  onBrowse: () => void;
+  error: string | null;
+}) {
+  const [draft, setDraft] = useState('');
+  return (
+    <section className="bind-folder" data-testid="bind-folder">
+      <h3>Run this pipeline against a folder</h3>
+      <p>
+        This pipeline was imported, so it is not tied to a project yet. Point
+        it at a folder in your workspace to unlock ▶ Run — the pipeline you
+        imported is kept exactly as it is.
+      </p>
+      <div className="bind-folder__row">
+        <input
+          type="text"
+          className="bind-folder__input"
+          aria-label="Folder to run this pipeline against"
+          placeholder="my-service"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onBind(draft);
+          }}
+        />
+        <button
+          type="button"
+          className="btn btn--small"
+          onClick={() => onBind(draft)}
+          disabled={draft.trim() === ''}
+        >
+          Use this folder
+        </button>
+        <button type="button" className="btn btn--small btn--ghost" onClick={onBrowse}>
+          Browse…
+        </button>
+      </div>
+      {error !== null && (
+        <div className="editor__error" role="alert">
+          {error}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function WarningsBanner({ warnings }: { warnings: Warning[] }) {
   if (warnings.length === 0) return null;
   return (
@@ -585,6 +643,8 @@ export function Editor() {
   // opened?" A fact about the server that the autosave effect reads but
   // must not re-run on. Reset whenever a different project is opened.
   const savedThisSession = useRef(false);
+  // UX-07 — binding an imported pipeline to a runnable folder.
+  const [bindError, setBindError] = useState<string | null>(null);
   // SEC-02 — where the current document came from. `detected` is the only
   // provenance whose commands the user implicitly authored.
   const [provenance, setProvenance] = useState<IRProvenance>('detected');
@@ -1066,6 +1126,31 @@ export function Editor() {
     if (next !== workingIR) apply(next);
   }
 
+  /**
+   * UX-07 — bind an imported pipeline to a folder so it can be run.
+   *
+   * A pipeline loaded from a file or a link has `detectedPath === null`, so
+   * the run panel was replaced by "Detect a workspace project to unlock
+   * ▶ Run" — and detecting would have REPLACED the imported document with a
+   * freshly detected one, losing the import. The mechanism already existed
+   * (the project-card CI import path sets a runnable path); it simply was
+   * not reachable. This validates the folder with a detect call, keeps the
+   * imported IR, and adopts only the path.
+   */
+  async function onBindFolder(path: string) {
+    if (workingIR === null || path.trim() === '') return;
+    setBindError(null);
+    try {
+      // Detect purely to validate the folder and learn its real path; the
+      // resulting IR is deliberately discarded.
+      await postDetect(path);
+      setDetectedPath(path);
+      recordRecent(path, workingIR.project.name);
+    } catch (err) {
+      setBindError(readableApiError(err, 'use this folder'));
+    }
+  }
+
   function onSwitchProject() {
     setLoadedIR(null);
     reset(null);
@@ -1525,10 +1610,11 @@ export function Editor() {
               provenanceLabel={importedFrom}
             />
           ) : (
-            <div className="editor__hint editor__hint--block">
-              This pipeline was imported, so there is no local project to run
-              it against. Detect a workspace project to unlock ▶ Run.
-            </div>
+            <BindFolderPrompt
+              onBind={onBindFolder}
+              onBrowse={() => setFolderPickerOpen(true)}
+              error={bindError}
+            />
           )}
           </aside>
           </div>

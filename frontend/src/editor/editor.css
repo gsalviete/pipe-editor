@@ -1476,3 +1476,41 @@
   font-size: 11px;
   max-width: 16rem;
 }
+
+/* UX-07 — bind an imported pipeline to a folder so it can be run. */
+.bind-folder {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.bind-folder h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: var(--text);
+}
+.bind-folder p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.bind-folder__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bind-folder__input {
+  flex: 1 1 10rem;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.bind-folder__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

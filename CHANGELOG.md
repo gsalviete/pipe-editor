@@ -7,6 +7,13 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Added
 
+- "Download all" on a generated workspace bundle: one zip with every artifact at
+  its real path, instead of one download per file with the path flattened into
+  the filename.
+- An imported pipeline can be bound to a folder to make it runnable, without
+  losing the imported document — previously the only route was to detect, which
+  replaced it.
+
 - Retroactive specifications for the four components that had shipped without
   one — `CI-EXPORT`, `CI-IMPORT`, `ADVISOR` and `STATE` — each with `FR`/`AC`
   ids mapped to the tests that already existed, and a Provenance section saying
