@@ -503,7 +503,7 @@ freely in case conditions and emissions.
 
 | Field | Value |
 |---|---|
-| Reads | `package.json` (presence only) plus in-progress IR: `/project/packageManager/name`, `/project/runtime/version` |
+| Reads | `package.json` (presence only), `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock` (presence only, for GEN-04's frozen-vs-resolving choice) plus in-progress IR: `/project/packageManager/name`, `/project/runtime/version` |
 | Target | `/stages/+` with `id="install"` (StageEmission) |
 
 **Cross-cuts [DET-FR-018(b)](../specs/detector-engine.spec.md#functional-requirements)** —
