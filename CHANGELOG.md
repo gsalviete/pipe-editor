@@ -7,6 +7,11 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Added
 
+- Unresolved project fields are now resolvable in the editor: each prompt carries
+  a control (a select for package manager, runtime and language; a text input for
+  the two version fields) that commits the value and clears the prompt in one
+  undoable edit (EDITOR-UI-FR-018, EDITOR-AC-037…039).
+
 - Productized local-CI-studio shell with a responsive editor and tool rail.
 - Self-contained brand mark and favicon.
 - Lightweight API and container health checks.

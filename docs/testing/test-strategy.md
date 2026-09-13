@@ -61,6 +61,7 @@ its Acceptance Criteria section; this is the consolidated view.
 | IR-AC-016 | T-IR-016 (`validate.spec.ts` — all 5 required nullable fields) | ✅ |
 | IR-AC-017 | T-IR-017 (`validate.spec.ts` — empty stages vacuously passes chain rule) | ✅ |
 | IR-AC-018 | T-IR-018 (`validate.spec.ts` — unresolved coexisting with value fails) | ✅ |
+| IR-AC-019 | T-IR-019 (`project-fields.spec.ts` — atomic resolve, invariant holds after each commit, rejection returns the input unchanged) | ✅ |
 | DOCKER-AC-001 | T-DOCKER-001 (`generate.spec.ts` — pnpm multi-stage golden) | ✅ |
 | DOCKER-AC-002 | T-DOCKER-002 (`generate.spec.ts` — build disabled → "disabled" single-stage golden) | ✅ |
 | DOCKER-AC-003 | T-DOCKER-003 (`generate.spec.ts` — no `:latest` in any fixture) | ✅ |
@@ -130,6 +131,9 @@ its Acceptance Criteria section; this is the consolidated view.
 | EDITOR-AC-034 | T-EDITOR-034 (`validate(ir)` is the gate: structural defect → 400 INVALID_IR) | ✅ |
 | EDITOR-AC-035 | T-EDITOR-035 + T-EDITOR-035b (effective-chain caption shows spliced order; toggling lint omits it and pairs install→test; empty-chain placeholder when all disabled) | ✅ |
 | EDITOR-AC-036 | T-EDITOR-036 (`working-ir.spec.ts` — editor gate delegates to `findUnrunnableReason`; all five required-nullable fields block, in backend probe order) | ✅ |
+| EDITOR-AC-037 | T-EDITOR-037 (`Editor.resolve.spec.tsx` — version text input and package-manager select commit and clear the gate) | ✅ |
+| EDITOR-AC-038 | T-EDITOR-038 (`Editor.resolve.spec.tsx` — `lts/hydrogen` refused with role=alert, IR untouched) | ✅ |
+| EDITOR-AC-039 | T-EDITOR-039 (`Editor.resolve.spec.tsx` — undo restores the unresolved state) | ✅ |
 | PRODUCT-AC-001 | T-EDITOR-012 (`Editor.spec.tsx` — product promise, guided steps, picker entry point) | ✅ |
 | PRODUCT-AC-002 | T-PRODUCT-002 (`product-shell.spec.ts` + `FolderPicker.spec.tsx` — desktop rail, mobile stack, standard select/open behavior); 781 px + 390 × 844 visual QA | ✅ |
 | PRODUCT-AC-003 | T-PRODUCT-003 (`product-shell.spec.ts` — focus-visible and reduced-motion contracts) | ✅ |

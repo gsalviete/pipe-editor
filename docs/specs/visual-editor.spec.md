@@ -759,6 +759,47 @@ MUST NOT expose affordances for these operations.
   and when it drifts the user sees an enabled button fail with a
   422 citing a field the interface never named.
 
+- **EDITOR-UI-FR-018 — Resolving an unresolved field in place.** Every
+  `unresolved` entry whose `field` is one of the five required-nullable
+  `/project/*` fields MUST render, alongside its `field` and `message`
+  (EDITOR-UI-FR-007), a control that commits a value for that field:
+  1. A **`<select>`** where the value set is closed —
+     `/project/packageManager/name` (`npm` | `pnpm` | `yarn`),
+     `/project/runtime/name` (`node`), `/project/language`
+     (`typescript` | `javascript`). Choosing an option commits it.
+  2. A **text input plus a commit button** where it is not —
+     `/project/runtime/version`, `/project/packageManager/version`.
+     Enter commits as well as the button.
+  Each control MUST carry an accessible label naming the field in the
+  user's vocabulary ("Node version", "Package manager"), not the JSON
+  pointer.
+
+  **The commit is atomic.** It MUST go through `resolveProjectField`
+  from `@modules/ir`, which sets the value and removes the paired
+  `unresolved` entry in one new IR, so the document never passes through
+  a state that violates null ⟺ unresolved (IR-AC-016 / IR-AC-018). The
+  editor MUST NOT set the field and drop the entry as two edits.
+
+  **A value that does not normalize is refused, not written.** The
+  editor MUST run `normalizeProjectFieldValue` (the IR's own rule, not a
+  local copy) and, when it yields `null`, keep the prompt, leave the IR
+  untouched, and show the reason in an element with `role="alert"`.
+  `20`, `v20.11.0` and `>=20` all commit as `20`; `lts/hydrogen` is
+  refused.
+
+  **Resolution is an ordinary edit.** It produces a new Working IR, is
+  pushed onto the undo history, leaves the Loaded IR untouched
+  (EDITOR-UI-FR-012), and triggers autosave and re-validation like any
+  other edit.
+
+  **Stage images are not rewritten.** Committing
+  `/project/runtime/version` does NOT retag the stages that carry
+  `node:lts-alpine`. Those are a distinct IR field the user may have set
+  deliberately (see the coherence note in the detection-rules
+  catalogue); the Pipeline Doctor's floating-tag and runtime-drift
+  findings are what surface the mismatch, and the per-stage image
+  control is what fixes it.
+
 ### UI non-functional requirements
 
 - **EDITOR-UI-NFR-001 — Library-agnostic rendering.** The spec
@@ -884,7 +925,7 @@ Testing Library + Vitest). See
 | **EDITOR-AC-014** | Toggling a Stage's enabled control flips `enabled` in the Working IR (producing a new Working IR; Loaded IR untouched) and re-renders. Disabled Stages carry the CSS class `stage-node--disabled`. | T-EDITOR-014 |
 | **EDITOR-AC-015** | The rendered chain reflects `computeEffectiveChain(workingIR)`. **In v1 this is asserted at two layers** (per EDITOR-UI-FR-006): (a) the connectors flanking a disabled Stage carry `chain-connector--inactive` (already exercised behaviorally in EDITOR-AC-021), AND (b) the **effective-chain caption** (EDITOR-UI-FR-016) lists the effective-chain Stage IDs in spliced order — so disabling `lint` MUST make the caption show `install → test → build → docker-build` (lint absent, install adjacent to test). The "test's effective predecessor visually becomes install" claim from IR-AC-015 is satisfied **positively** by the caption text; the broken-connector styling is the visual reinforcement. A drawn bypass connector that physically re-routes the line around disabled Stages is deferred to v0.2 — see [OQ-EDITOR-005](#open-questions). | T-EDITOR-015 |
 | **EDITOR-AC-016** | Re-enabling a previously disabled Stage restores it to the effective chain (verified by re-querying `computeEffectiveChain` after the toggle). | T-EDITOR-016 |
-| **EDITOR-AC-017** | Every entry in `workingIR.unresolved` is rendered as a prompt with both `field` and `message` visible. (Note: `unresolved` is not changed by toggle interactions in v1, so `loadedIR.unresolved` and `workingIR.unresolved` are byte-equal until v0.2 introduces in-UI resolution — EDITOR-OQ-003.) | T-EDITOR-017 |
+| **EDITOR-AC-017** | Every entry in `workingIR.unresolved` is rendered as a prompt with both `field` and `message` visible. (Note: `unresolved` is not changed by *toggle* interactions, so `loadedIR.unresolved` and `workingIR.unresolved` stay byte-equal under toggling. In-UI resolution — deferred as EDITOR-OQ-003 when this criterion was written — now exists and does change `workingIR.unresolved`; see EDITOR-UI-FR-018 and EDITOR-AC-037…039.) | T-EDITOR-017 |
 | **EDITOR-AC-018** | Warnings from the API response are rendered as a non-blocking notice. | T-EDITOR-018 |
 | **EDITOR-AC-019** | "Export JSON" produces a string identical to `serializeCanonical(workingIR)`, where `workingIR` reflects all toggle changes since the last "Detect". Specifically: load fixture → toggle `lint.enabled = false` → "Export JSON" → assert the exported string equals `serializeCanonical(workingIR)` AND differs from `serializeCanonical(loadedIR)` at exactly the `lint.enabled` byte region. | T-EDITOR-019 |
 | **EDITOR-AC-020** | "Export YAML" produces a string whose `yaml.load()` parses back to a `canonicalEquals`-equal IR (round-trip against the Working IR, not the Loaded IR). | T-EDITOR-020 |
@@ -904,6 +945,9 @@ Testing Library + Vitest). See
 | **EDITOR-AC-034** | `POST /api/generate` validates every incoming IR via `validate(ir)` before invoking the generator: an IR with structural defects (e.g. duplicate Stage `id`, dangling `dependsOn`) returns `400 INVALID_IR` even if the IR superficially looks like one a prior detect() could have produced. The controller MUST NOT skip validation on the basis of any header, cookie, or session signal claiming the IR is "trusted." | T-EDITOR-034 |
 | **EDITOR-AC-035** | **Effective-chain caption tracks the splice.** After a successful Detect on the canonical fixture, the caption (queryable via `data-testid="effective-chain-caption"`) MUST contain the string `install → lint → test → build → docker-build` (separator and exact order). Toggling `lint.enabled` to `false` MUST update the caption to `install → test → build → docker-build` — lint is absent AND `install` is immediately followed by `test` in the rendered text. Toggling lint back on MUST restore the original text. The caption MUST derive from the same `computeEffectiveChain(workingIR)` call site the connectors use (single read, two consumers — EDITOR-UI-FR-016). | T-EDITOR-035 |
 | **EDITOR-AC-036** | **The editor's runnability gate equals the backend's.** For an IR whose only null required field is one of the three the editor historically ignored (`/project/packageManager/version`, `/project/runtime/name`, `/project/language`), the editor's gate MUST report that field as blocking — i.e. `hasUnresolvedRequiredField(ir)` returns the same field `findUnrunnableReason(ir)` names, for each of the five required-nullable fields, in the same probe order. Generate and Run MUST be disabled in that state. | T-EDITOR-036 |
+| **EDITOR-AC-037** | **An unresolved required field can be resolved in the UI.** For an IR whose only unresolved entry is `/project/runtime/version`, the editor renders a control labelled "Node version"; entering `20` and committing MUST (a) remove that prompt, (b) show `node 20` in the project badges, and (c) clear the Generate/Run gate hint. For an IR whose only unresolved entry is `/project/packageManager/name`, the editor renders a `<select>` labelled "Package manager" offering exactly `npm`, `pnpm`, `yarn`; choosing one commits it and removes the prompt. A full semver (`v20.11.0`) commits as the major (`20`). | T-EDITOR-037 |
+| **EDITOR-AC-038** | **A value that does not normalize is refused, not written.** Committing `lts/hydrogen` into `/project/runtime/version` MUST leave the IR unchanged: the prompt stays, the gate stays on, and an element with `role="alert"` names the rejected input. | T-EDITOR-038 |
+| **EDITOR-AC-039** | **Resolution is undoable.** After resolving a field, Undo MUST restore the unresolved state — the prompt returns and the Generate/Run gate is on again — confirming resolution went through the same history as every other edit. | T-EDITOR-039 |
 
 ## Testing approach
 
@@ -1003,3 +1047,4 @@ craft is what we judge by eye.
 | 2026-06-21 | **Accepted** 2026-06-21 after review. Implementation MAY begin. ADR-0008 promoted to Accepted on the same day. The DOCKER-AC-013 amendment (all-disabled effective chain, surfaced by this spec's empty-chain analysis) is filed in `dockerfile-generator.spec.md`'s changelog; DOCKER stays Accepted (amendment is additive). |
 | 2026-06-22 | Amendment (stays Accepted): EDITOR-AC-015's "test's effective predecessor visually becomes install" was satisfied only under a **loose reading** by the prior implementation — the inactive-connector styling encoded the splice but did not assert it positively (a naïve viewer could still read a line threading through the disabled Stage). Triage during the toggle-effect bug found this gap. Resolution: (a) new **EDITOR-UI-FR-016** mandates an explicit text caption listing the effective-chain Stage IDs in order, derived from the same `computeEffectiveChain(workingIR)` call the connectors use (one read, two consumers). (b) EDITOR-UI-FR-006 reworded to spell out the two-layer v1 signal (inactive connectors + caption). (c) EDITOR-AC-015 reworded to assert the splice POSITIVELY via the caption text — disabling lint MUST make the caption show `install → test → …`. (d) New EDITOR-AC-035 locks the caption's behavior across toggle/un-toggle. (e) A literal bypass connector that physically re-routes the line around disabled Stages is **explicitly deferred** to v0.2, recorded as OQ-EDITOR-005 with the rationale (the caption removes ambiguity in text without the layout-engine cost; the bypass line is UX polish). Total ACs: 35 (was 34). Contract is not reversing — the v1 guarantee is now stated unambiguously where it had been loosely interpretable. |
 | 2026-09-13 | Amendment (stays Accepted), from adversarial review finding **UX-02**: the editor's Generate/Run gate was a hand-written two-field check (`packageManager.name`, `runtime.version`) while the backend blocked on **five** fields, so an IR missing `/project/packageManager/version`, `/project/runtime/name` or `/project/language` showed enabled buttons that failed with a 422 naming a field the UI never mentioned. Resolution: (a) new **EDITOR-UI-FR-017** requires every runnability-dependent affordance to derive its answer from `findUnrunnableReason` imported from `@modules/ir`, and forbids a frontend-local copy of the required-nullable field list. (b) EDITOR-UI-FR-015's parenthetical, which had hard-coded the two-field formulation and was the origin of the drift, now defers to FR-017. (c) New EDITOR-AC-036 locks the equality across all five fields. Total ACs: 36 (was 35). |
+| 2026-09-13 | Amendment (stays Accepted), from adversarial review finding **UX-01a** — the most severe finding in the report. The editor rendered `unresolved` entries as read-only text (EDITOR-UI-FR-007) and offered no way to set the fields they named. Combined with a detector that could only resolve the Node version from `engines.node`, an ordinary Node project detected into a pipeline whose Generate and Run actions were permanently disabled, with a prompt instructing the user to do something the interface did not permit; the only escapes were editing the target project's `package.json` or hand-editing an exported IR. Decision D's "closed editable surface" is hereby opened by exactly one affordance. New **EDITOR-UI-FR-018** specifies the in-place resolution control: a `<select>` for the three closed-value fields, a text input plus commit button for the two version fields, the commit routed through `resolveProjectField` so the value lands and the paired `unresolved` entry is dropped in a single new IR (never two edits, so null ⟺ unresolved never breaks mid-edit), rejection via the IR's own `normalizeProjectFieldValue` rather than a frontend copy, and resolution treated as an ordinary undoable edit. Stage images are explicitly NOT retagged on resolution — the Doctor reports the drift and the per-stage image control fixes it. EDITOR-AC-017's parenthetical, which recorded in-UI resolution as deferred (EDITOR-OQ-003), is updated to point at this amendment; OQ-EDITOR-003 is thereby resolved. New EDITOR-AC-037…039. Total ACs: 39 (was 36). Supporting IR change: `resolveProjectField` / `normalizeProjectFieldValue` / `majorFromVersionText` live in `@modules/ir` (IR-AC-026) so the detector and the editor share one rule. |

@@ -5,6 +5,7 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { ALL_RULES, Detector, Rule, RuleRegistrationError } from '../detector';
 import { PipelineIR, validate } from './index';
 
 const FIXTURE_PATH = join(
@@ -284,17 +285,142 @@ describe('validate', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────
-  // T-IR-005, T-IR-006, T-IR-012, T-IR-013, T-IR-014 — detector-dependent.
-  // These criteria can only be fully exercised once the Detector spec is
-  // Accepted and implemented. The IR-level halves are covered by the
-  // round-trip and IR-AC-016/018 tests above; the detector halves are
-  // marked `.todo()` so the gap is visible in the test report.
+  // T-IR-005, T-IR-006, T-IR-012, T-IR-013, T-IR-014 — the detector-facing
+  // halves of the IR ACs. Deferred while the Detector was unimplemented;
+  // the Detector (DET, Accepted 2026-06-15) now exists, so these exercise
+  // the real engine end-to-end against the bundled fixtures. The detector's
+  // own T-DET suite covers the engine mechanics; these pin the IR-AC-side
+  // contract for traceability.
   // ───────────────────────────────────────────────────────────────────────
-  it.todo('T-IR-005 (IR-AC-005) — needs-user-input emission [detector-dependent]');
-  it.todo('T-IR-006 (IR-AC-006) — omit emits nothing [detector-dependent]');
-  it.todo('T-IR-012 (IR-AC-012) — manifest-set enforcement [detector-dependent]');
-  it.todo('T-IR-013 (IR-AC-013) — confidence threshold [detector-dependent]');
-  it.todo('T-IR-014 (IR-AC-014) — monorepo handling [detector-dependent]');
+  describe('detector-facing ACs (T-IR-005/006/012/013/014)', () => {
+    const FIXTURES = join(__dirname, '..', '..', '..', '..', 'test', 'fixtures');
+    const BASIC_FIXTURE = join(FIXTURES, 'node-pnpm-nest-basic');
+
+    function detectorWithSubstitution(replaceRuleId: string, syntheticRule: Rule): Detector {
+      return new Detector({
+        rules: [...ALL_RULES.filter((r) => r.id !== replaceRuleId), syntheticRule],
+      });
+    }
+
+    it('T-IR-005 (IR-AC-005) — needs-user-input emission produces exactly one unresolved entry and no committed value', () => {
+      // Substitute the runtime-version rule with one that is always uncertain.
+      const detector = detectorWithSubstitution('DR-004', {
+        id: 'DR-TEST-005',
+        reads: ['package.json'],
+        kind: 'field',
+        cases: [
+          {
+            condition: () => true,
+            emit: () => ({
+              kind: 'field',
+              target: '/project/runtime/version',
+              value: null,
+            }),
+            confidence: 'medium',
+            onUncertainty: 'needs-user-input',
+            message: 'Node version unknown; please specify.',
+          },
+        ],
+      });
+      const { ir } = detector.detect(BASIC_FIXTURE);
+      expect(ir.project.runtime.version).toBeNull();
+      const entries = (ir.unresolved ?? []).filter(
+        (u) => u.field === '/project/runtime/version',
+      );
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toEqual({
+        field: '/project/runtime/version',
+        reason: 'needs-user-input',
+        message: 'Node version unknown; please specify.',
+      });
+      expect(validate(ir)).toEqual([]);
+    });
+
+    it('T-IR-006 (IR-AC-006) — omit on an optional field emits no unresolved entry and no committed value', () => {
+      // /project/name is the only optional (non-required-nullable) field
+      // target; when the rule is uncertain + omit, the default (folder
+      // basename) survives and no unresolved entry appears.
+      const detector = detectorWithSubstitution('DR-001', {
+        id: 'DR-TEST-006',
+        reads: ['package.json'],
+        kind: 'field',
+        cases: [
+          {
+            condition: () => true,
+            emit: () => ({
+              kind: 'field',
+              target: '/project/name',
+              value: 'must-not-commit',
+            }),
+            confidence: 'medium',
+            onUncertainty: 'omit',
+          },
+        ],
+      });
+      const { ir } = detector.detect(BASIC_FIXTURE);
+      expect(ir.project.name).toBe('node-pnpm-nest-basic'); // default, not the rule's value
+      expect((ir.unresolved ?? []).filter((u) => u.field === '/project/name')).toEqual([]);
+      expect(validate(ir)).toEqual([]);
+    });
+
+    it('T-IR-012 (IR-AC-012) — a rule reading outside the enumerated manifest set is rejected as a rule defect', () => {
+      expect(
+        () =>
+          new Detector({
+            rules: [
+              ...ALL_RULES,
+              {
+                id: 'DR-TEST-012',
+                reads: ['README.md' as never],
+                kind: 'field',
+                cases: [],
+              },
+            ],
+          }),
+      ).toThrow(RuleRegistrationError);
+      // The IR remains schema-conformant: detection without the defective
+      // rule still validates cleanly.
+      const { ir } = new Detector({ rules: ALL_RULES }).detect(BASIC_FIXTURE);
+      expect(validate(ir)).toEqual([]);
+    });
+
+    it('T-IR-013 (IR-AC-013) — confidence threshold: medium commits nothing; the same rule at high commits', () => {
+      const caseAt = (confidence: 'high' | 'medium'): Rule => ({
+        id: 'DR-TEST-013',
+        reads: ['package.json'],
+        kind: 'field',
+        cases: [
+          {
+            condition: () => true,
+            emit: () => ({
+              kind: 'field',
+              target: '/project/name',
+              value: 'committed-by-rule',
+            }),
+            confidence,
+            onUncertainty: 'omit',
+          },
+        ],
+      });
+
+      const medium = detectorWithSubstitution('DR-001', caseAt('medium')).detect(BASIC_FIXTURE);
+      expect(medium.ir.project.name).toBe('node-pnpm-nest-basic');
+      expect((medium.ir.unresolved ?? []).filter((u) => u.field === '/project/name')).toEqual([]);
+
+      const high = detectorWithSubstitution('DR-001', caseAt('high')).detect(BASIC_FIXTURE);
+      expect(high.ir.project.name).toBe('committed-by-rule');
+    });
+
+    it('T-IR-014 (IR-AC-014) — monorepo: rootPath is the folder the user pointed at, never a child workspace', () => {
+      const rootPath = join(FIXTURES, 'monorepo-pnpm');
+      const { ir } = new Detector({ rules: ALL_RULES }).detect(rootPath);
+      expect(ir.project.rootPath).toBe(rootPath);
+      expect(ir.project.name).toBe('monorepo-pnpm');
+      expect(ir.project.rootPath.endsWith('backend')).toBe(false);
+      expect(ir.project.rootPath.endsWith('frontend')).toBe(false);
+      expect(validate(ir)).toEqual([]);
+    });
+  });
 });
 
 // Minimal JSON-Pointer setter used by the tests above.

@@ -8,3 +8,17 @@ export {
   canonicalDigest,
   canonicalEquals,
 } from './canonical';
+export {
+  findUnrunnableReason,
+  UnresolvedRequiredFieldError,
+} from './unrunnable';
+export type { UnrunnableReason } from './unrunnable';
+export {
+  majorFromVersionText,
+  normalizeProjectFieldValue,
+  resolveProjectField,
+  SUPPORTED_LANGUAGES,
+  SUPPORTED_PACKAGE_MANAGERS,
+  SUPPORTED_RUNTIMES,
+} from './project-fields';
+export type { RequiredNullableField } from './project-fields';

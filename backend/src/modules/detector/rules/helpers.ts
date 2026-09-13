@@ -1,26 +1,16 @@
 // Helpers shared by DR-NNN rules.
 
-import { Step } from '../../ir';
+import { majorFromVersionText, Step } from '../../ir';
+
+// DR-004's evidence test is the IR's own value-shape rule; re-exported here
+// so rule modules keep importing their helpers from one place.
+export { majorFromVersionText };
 import { RuleCtx } from '../types';
 
 export function extractMajor(version: string): string {
   // Strip a leading `>=`, `^`, `~`, `v`, or whitespace; take the first run of digits.
   const m = version.match(/(\d+)/);
   return m === null ? version : m[1];
-}
-
-/**
- * Major version from a free-text version pin, or null when the text names
- * no concrete version. Unlike `extractMajor` this REJECTS input that does
- * not start with a version-ish token, so nvm aliases (`lts/hydrogen`,
- * `node`, `stable`) become "no evidence" rather than a bogus version that
- * would be interpolated straight into a `node:<v>-alpine` image tag.
- */
-export function majorFromVersionText(raw: string): string | null {
-  const trimmed = raw.trim();
-  // Strip a leading range operator or `v` prefix, then require digits.
-  const m = trimmed.match(/^(?:[>=<~^]=?|v)?\s*(\d+)(?:[.\-+a-zA-Z0-9]*)?$/);
-  return m === null ? null : m[1];
 }
 
 export function isNonEmptyString(v: unknown): v is string {
