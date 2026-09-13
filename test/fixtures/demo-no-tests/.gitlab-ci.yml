@@ -1,0 +1,8 @@
+image: node:20-alpine
+stages: [verify]
+verify:
+  stage: verify
+  script:
+    - npm ci
+    - npm run lint
+    - npm run build

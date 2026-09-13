@@ -1,0 +1,11 @@
+{
+  "name": "node-pm-field-no-lockfile",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "engines": { "node": "20" },
+  "scripts": {
+    "build": "tsc",
+    "test": "echo test && exit 0"
+  }
+}

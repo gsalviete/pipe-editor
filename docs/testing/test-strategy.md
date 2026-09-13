@@ -134,6 +134,9 @@ its Acceptance Criteria section; this is the consolidated view.
 | EDITOR-AC-037 | T-EDITOR-037 (`Editor.resolve.spec.tsx` — version text input and package-manager select commit and clear the gate) | ✅ |
 | EDITOR-AC-038 | T-EDITOR-038 (`Editor.resolve.spec.tsx` — `lts/hydrogen` refused with role=alert, IR untouched) | ✅ |
 | EDITOR-AC-039 | T-EDITOR-039 (`Editor.resolve.spec.tsx` — undo restores the unresolved state) | ✅ |
+| FLOW-AC-001 | T-FLOW-001 (`unresolved-flow.spec.ts` — `node-npm-no-engines` detect → refuse → resolve → generate → export) | ✅ |
+| FLOW-AC-002 | T-FLOW-002 (`unresolved-flow.spec.ts` — `node-pm-field-no-lockfile` detects as pnpm from the field alone) | ✅ |
+| FLOW-AC-003 | T-FLOW-003 (`unresolved-flow.spec.ts` — every fixture golden's install command matches its declared package manager) | ✅ |
 | PRODUCT-AC-001 | T-EDITOR-012 (`Editor.spec.tsx` — product promise, guided steps, picker entry point) | ✅ |
 | PRODUCT-AC-002 | T-PRODUCT-002 (`product-shell.spec.ts` + `FolderPicker.spec.tsx` — desktop rail, mobile stack, standard select/open behavior); 781 px + 390 × 844 visual QA | ✅ |
 | PRODUCT-AC-003 | T-PRODUCT-003 (`product-shell.spec.ts` — focus-visible and reduced-motion contracts) | ✅ |

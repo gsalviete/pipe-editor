@@ -1,0 +1,10 @@
+{
+  "name": "node-npm-no-engines",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "lint": "echo lint && exit 0",
+    "test": "echo test && exit 0"
+  }
+}

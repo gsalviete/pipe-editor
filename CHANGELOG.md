@@ -30,6 +30,12 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- Two fixture golden IRs declared npm and yarn but carried the pnpm install
+  command, copied from the pnpm fixture. The Dockerfile generator branches on
+  `packageManager.name` and ignores the step text, so its goldens passed and
+  nothing noticed — while CI export and the executor emit `run` verbatim.
+  A coherence test now locks every golden to its own declared package manager.
+
 - Detection now resolves the Node version from `volta.node`, `.nvmrc` and
   `.node-version` as well as `engines.node`, so a project that pins its version
   the ordinary way no longer detects to a pipeline that can never be generated or

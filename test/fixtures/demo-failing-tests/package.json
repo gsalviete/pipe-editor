@@ -1,0 +1,16 @@
+{
+  "name": "demo-failing-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Intentional test failure for logs and pipeline stop behavior",
+  "engines": {
+    "node": "20"
+  },
+  "packageManager": "npm@10.0.0",
+  "scripts": {
+    "lint": "node --check src/main.js",
+    "build": "node build.js",
+    "start": "node dist/main.js",
+    "test": "node --test"
+  }
+}

@@ -25,7 +25,7 @@
       "steps": [
         {
           "id": "install-deps",
-          "run": "corepack enable && pnpm install --frozen-lockfile",
+          "run": "npm ci",
           "workingDir": ".",
           "env": {}
         }
