@@ -10,6 +10,7 @@
 // IRs structurally modulo generatedAt.
 
 import { PipelineIR, Stage } from './types';
+import { MAX_DOCUMENT_DEPTH } from './validate';
 
 export function canonicalize(ir: PipelineIR): PipelineIR {
   return {
@@ -73,11 +74,22 @@ function topologicalOrder(stages: Stage[]): Stage[] {
   return ordered;
 }
 
-function deepSortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(deepSortKeys);
+function deepSortKeys(value: unknown, depth = 0): unknown {
+  // SEC-07 — the same depth bound validate() applies. canonicalize() runs on
+  // documents that have not necessarily been validated first (the state store
+  // and the share-link decoder both canonicalize to compare), so the guard
+  // cannot live only in the validator.
+  if (depth > MAX_DOCUMENT_DEPTH) {
+    throw new RangeError(
+      `document nesting exceeds the maximum depth of ${MAX_DOCUMENT_DEPTH}`,
+    );
+  }
+  if (Array.isArray(value)) return value.map((item) => deepSortKeys(item, depth + 1));
   if (value === null || typeof value !== 'object') return value;
   const sorted: Record<string, unknown> = {};
   const keys = Object.keys(value as Record<string, unknown>).sort();
-  for (const k of keys) sorted[k] = deepSortKeys((value as Record<string, unknown>)[k]);
+  for (const k of keys) {
+    sorted[k] = deepSortKeys((value as Record<string, unknown>)[k], depth + 1);
+  }
   return sorted;
 }

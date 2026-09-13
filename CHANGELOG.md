@@ -30,6 +30,15 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- `validate()` now constrains the two IR values that leave the document for a
+  place that can reinterpret them: `container.image` must be a real image
+  reference (so a value starting with `-` cannot shift the image slot on the
+  docker argv) and `step.env` keys must be environment variable names. Both
+  checks live in the validator, so every consumer inherits them.
+- Recursive walks over a client-supplied document are depth-bounded. A deeply
+  nested body used to exhaust the stack and surface as an opaque 500; it is now a
+  validation error.
+
 - The workspace bundle's GitHub Actions file indents every line of a multi-line
   command, instead of only the first. A command containing newlines used to
   de-indent its continuation lines, break the block scalar and fail the bundle's

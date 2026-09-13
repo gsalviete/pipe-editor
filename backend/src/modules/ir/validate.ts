@@ -23,6 +23,25 @@ import { ValidationError } from './errors';
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
 const KEBAB_CASE_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+
+/**
+ * Docker image reference (SEC-03): an optional registry host, a lowercase
+ * path, an optional tag and an optional digest. Deliberately strict — it
+ * admits what the Executor can safely hand to `docker run` and nothing
+ * else. A leading `-`, whitespace, or an uppercase path component is out.
+ */
+const IMAGE_REFERENCE_RE =
+  /^(?:[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[0-9]+)?\/)?[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*(?::[A-Za-z0-9_][A-Za-z0-9._-]*)?(?:@sha256:[a-f0-9]{64})?$/;
+
+/** POSIX environment variable name (SEC-04). */
+const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Maximum object/array nesting accepted in a client-supplied document
+ * (SEC-07). A real IR nests about six levels deep; 64 is far past any
+ * legitimate document and far short of the stack.
+ */
+export const MAX_DOCUMENT_DEPTH = 64;
 const VALID_PACKAGE_MANAGERS: PackageManagerName[] = ['npm', 'pnpm', 'yarn'];
 
 export function validate(input: unknown): ValidationError[] {
@@ -47,11 +66,26 @@ export function validate(input: unknown): ValidationError[] {
 // IR-AC-003 / IR-NFR-001 — forbidden provider-specific keys, recursively.
 // Walks the entire tree; any object key in FORBIDDEN_KEYS fails.
 // ─────────────────────────────────────────────────────────────────────────────
-function validateForbiddenKeys(node: unknown, path: string): ValidationError[] {
+function validateForbiddenKeys(node: unknown, path: string, depth = 0): ValidationError[] {
   const errors: ValidationError[] = [];
+  // SEC-07 — the walk used to recurse without a bound. Express accepts 1 MB
+  // bodies, which is room for ~10^5 nesting levels, and V8's JSON.parse is
+  // iterative so body-parser does not shield this: a deep document reached
+  // the validator and blew the stack, surfacing as an opaque 500 instead of
+  // a 400. A document this deep is malformed by any reading, so the cap is
+  // a validation error rather than a crash.
+  if (depth > MAX_DOCUMENT_DEPTH) {
+    return [
+      {
+        acId: 'IR-AC-022',
+        path,
+        message: `document nesting exceeds the maximum depth of ${MAX_DOCUMENT_DEPTH}`,
+      },
+    ];
+  }
   if (Array.isArray(node)) {
     node.forEach((item, i) => {
-      errors.push(...validateForbiddenKeys(item, `${path}/${i}`));
+      errors.push(...validateForbiddenKeys(item, `${path}/${i}`, depth + 1));
     });
   } else if (node !== null && typeof node === 'object') {
     for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
@@ -62,7 +96,7 @@ function validateForbiddenKeys(node: unknown, path: string): ValidationError[] {
           message: `forbidden provider-specific key "${key}"; the IR is provider-neutral (IR-NFR-001)`,
         });
       }
-      errors.push(...validateForbiddenKeys(value, `${path}/${key}`));
+      errors.push(...validateForbiddenKeys(value, `${path}/${key}`, depth + 1));
     }
   }
   return errors;
@@ -215,6 +249,22 @@ function validateStageShape(stage: unknown, path: string): ValidationError[] {
         path: `${path}/container/image`,
         message: 'container.image is required and non-nullable in v1',
       });
+    } else if (!IMAGE_REFERENCE_RE.test(c.image)) {
+      // SEC-03 — the image lands in the option region of a privilege-bearing
+      // CLI: the Executor spawns `docker run ... <image> sh -c <cmd>`, and a
+      // value starting with `-` is consumed by the Docker CLI as another
+      // option, shifting the image slot to `sh`. The ceiling on that is low
+      // (the `sh` image will not resolve) but it depends on Docker's argument
+      // parser rather than on us. Validating here means every consumer — the
+      // executor, both CI exporters, the Dockerfile generator, the workspace
+      // validator and the editor — inherits the rule.
+      errors.push({
+        acId: 'IR-AC-020',
+        path: `${path}/container/image`,
+        message:
+          `container.image "${c.image}" is not a valid image reference ` +
+          '(expected [registry/]name[:tag][@sha256:digest], lowercase)',
+      });
     }
   }
 
@@ -246,6 +296,30 @@ function validateStepShape(step: unknown, path: string): ValidationError[] {
   }
   if (st.env === null || typeof st.env !== 'object' || Array.isArray(st.env)) {
     errors.push({ acId: 'IR-AC-001', path: `${path}/env`, message: 'step.env must be an object' });
+  } else {
+    for (const [key, value] of Object.entries(st.env as Record<string, unknown>)) {
+      // SEC-04 — env keys flow into `-e KEY=VALUE` on the docker argv, into
+      // `env:` blocks in the GitHub Actions export and into `variables:` in
+      // GitLab. A key containing `:` or a leading `-` produces a different
+      // document or a different argv than the one displayed. The POSIX
+      // environment-variable name grammar is what every consumer can carry.
+      if (!ENV_KEY_RE.test(key)) {
+        errors.push({
+          acId: 'IR-AC-021',
+          path: `${path}/env/${key}`,
+          message:
+            `env key "${key}" is not a valid environment variable name ` +
+            '(expected ^[A-Za-z_][A-Za-z0-9_]*$)',
+        });
+      }
+      if (typeof value !== 'string') {
+        errors.push({
+          acId: 'IR-AC-021',
+          path: `${path}/env/${key}`,
+          message: 'env values must be strings',
+        });
+      }
+    }
   }
   return errors;
 }
