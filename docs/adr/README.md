@@ -24,6 +24,7 @@ were *reasoned*, not accidental.
 | [ADR-0009](./0009-docker-access-in-the-compose-demo.md) | Docker access in the compose demo — editor slice by default, EXEC local-only in v1 | Accepted |
 | [ADR-0010](./0010-workspace-plan-above-service-pipelines.md) | Workspace Plan above service Pipeline IRs | Accepted |
 | [ADR-0011](./0011-runtime-version-evidence-order.md) | Runtime-version evidence order, and aliases left unresolved | Accepted |
+| [ADR-0012](./0012-build-output-directory-stays-an-assumption.md) | The build output directory stays a declared assumption, not an IR field | Accepted |
 
 ## How to register a new decision
 
