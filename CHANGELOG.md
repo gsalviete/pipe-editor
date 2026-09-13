@@ -30,6 +30,20 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- Importing a GitHub Actions `run: |` block no longer flattens it with ` && `,
+  which commented out the whole block when any line started with `#` and broke
+  every loop, `if` and heredoc. The script is preserved verbatim and the importer
+  says so.
+- The GitLab importer gives each step its own `env` object instead of sharing one
+  reference across a job's steps.
+- Package-manager inference prefers the binary in an actual install command over
+  a mention anywhere in the text, and every inferred project fact now carries a
+  warning saying it was inferred.
+- Provider detection for an auto-detected import is decided on the parsed
+  document, so a Kubernetes manifest, an Azure Pipelines file or a Compose file
+  is refused outright instead of being fed to a converter that fails later with a
+  confusing message.
+
 - The executor now runs a stage's steps as a script under `set -e` rather than
   joining them with ` && `, so a step ending in a comment can no longer comment
   out the steps after it, while a failing step still aborts the stage.
