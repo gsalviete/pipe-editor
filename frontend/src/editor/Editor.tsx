@@ -42,6 +42,7 @@ import { recordRecent } from './recent-projects';
 import { download } from './ui';
 import { useUndoableIR } from './useUndoableIR';
 import { ShareLinkReview } from './CommandReview';
+import { decodeShareHash, encodeShareHash } from './share-link';
 import {
   hasUnresolvedRequiredField,
   listPipelineCommands,
@@ -571,13 +572,6 @@ function TriggerEditor({
 // ─── Editor ──────────────────────────────────────────────────────────
 
 // Unicode-safe base64 for the share-link hash.
-function encodeShareHash(json: string): string {
-  return btoa(unescape(encodeURIComponent(json)));
-}
-function decodeShareHash(hash: string): string {
-  return decodeURIComponent(escape(atob(hash)));
-}
-
 export function Editor() {
   const [projectPath, setProjectPath] = useState('');
   const [workspaceRoot, setWorkspaceRoot] = useState('');

@@ -80,3 +80,21 @@ export function checkProjectPath(
   }
   return { kind: 'outside' };
 }
+
+/**
+ * The stable key a project's local state is stored under.
+ *
+ * ARCH-05 / STATE-FR-005 — the workspace-relative realpath. `demo-api`,
+ * `./demo-api`, `demo-api/` and the contained absolute path all resolve to
+ * the same `realCandidate`, so they all produce the same key; keyed by the
+ * raw client string they were four separate saves for one project.
+ *
+ * The workspace root itself is `"."`, matching what `scanProjects` reports
+ * for it, so the picker's "edited" badges key off the same value the picker
+ * displays. Separators are normalized to `/` so a key written on Windows
+ * reads the same everywhere.
+ */
+export function stateKeyFor(wsRootRealpath: string, realCandidate: string): string {
+  const rel = relative(wsRootRealpath, realCandidate);
+  return rel === '' ? '.' : rel.split(sep).join('/');
+}

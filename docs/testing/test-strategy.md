@@ -225,13 +225,13 @@ its Acceptance Criteria section; this is the consolidated view.
 | STATE-AC-002 | T-STATE-002 (`store.spec.ts` — per-workspace namespacing) | ✅ |
 | STATE-AC-003 | T-STATE-003 (`store.spec.ts` — corrupt file yields empty state) | ✅ |
 | STATE-AC-004 | T-STATE-004 (`store.spec.ts` — write failures never throw) | ✅ |
-| STATE-AC-005 | T-STATE-005 — autosave keyed by workspace-relative realpath | ☐ |
+| STATE-AC-005 | T-STATE-005 (`state-key.spec.ts` — four spellings of one path share one save; index holds one entry) | ✅ |
 | STATE-AC-006 | T-EDITOR-AUTOSAVE (`Editor.features.spec.tsx` — PUT on divergence, DELETE at baseline) | ✅ |
 | STATE-AC-007 | T-EDITOR-RESTORE (`Editor.features.spec.tsx` — restore offered, not imposed) | ✅ |
 | STATE-AC-008 | T-STATE-008 (`run-registry.spec.ts`) + T-STATE-008a (`store.spec.ts` — bounded history, running runs kept) | ✅ |
 | STATE-AC-009 | T-STATE-009 (`project-scan.spec.ts`, `path-security.spec.ts` — containment, no symlink following, bounds) | ✅ |
 | STATE-AC-010 | T-SEC-006 (`bounded-read.spec.ts` — oversized manifest degrades the entry, scan completes) | ✅ |
-| STATE-AC-011 | T-STATE-011 — share-link encoding via TextEncoder/base64url | ☐ |
+| STATE-AC-011 | T-STATE-011 (`share-link.spec.ts` — UTF-8 round trip incl. CJK/emoji/RTL, 400 KB document, URL-safe output, throws on corruption) | ✅ |
 | STATE-AC-012 | T-SEC-010 (`Editor.provenance.spec.tsx` — link validated and held for review; fragment cleared) | ✅ |
 
 Legend: ✅ covered by passing tests, ◑ partially covered (Detector/Generator/

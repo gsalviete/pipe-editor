@@ -48,6 +48,14 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- Autosaved pipelines are keyed by the workspace-relative realpath, so
+  `demo-api`, `./demo-api`, `demo-api/` and the absolute path are one project
+  rather than four separate saves. The picker's "edited" badges now key off the
+  same value the picker displays.
+- Share links are encoded with `TextEncoder` and base64url instead of the
+  deprecated `escape`/`unescape` pair, and a corrupted link is reported as
+  corrupted rather than decoded into a half-formed document.
+
 - `EDITOR-AC-022` asserted that the editor exposed no controls for editing a
   step's command, adding a Stage or deleting one — the opposite of the shipped
   code and of its own test — while the traceability table reported it covered.

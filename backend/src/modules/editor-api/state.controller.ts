@@ -22,7 +22,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PipelineIR, validate } from '../ir';
 import { StateStore } from '../state-store';
 import { httpError } from './http-errors';
-import { checkProjectPath } from './path-security';
+import { checkProjectPath, stateKeyFor } from './path-security';
 import { WORKSPACE_ROOT_TOKEN, type WorkspaceRoot } from './workspace-root';
 
 export const STATE_STORE_TOKEN = 'EDITOR_STATE_STORE';
@@ -44,8 +44,7 @@ export class StateController {
   @Get('state/pipeline')
   @ApiOperation({ summary: 'The saved working pipeline for a project, if any.' })
   getPipeline(@Query('projectPath') projectPath: string | undefined) {
-    this.checkPath(projectPath);
-    return { saved: this.store.getPipeline(projectPath as string) };
+    return { saved: this.store.getPipeline(this.checkPath(projectPath)) };
   }
 
   @Put('state/pipeline')
@@ -55,7 +54,7 @@ export class StateController {
     if (body === null || body === undefined || typeof body !== 'object' || Array.isArray(body)) {
       throw httpError(400, 'INVALID_IR', 'Request body must be a JSON object with projectPath and ir.');
     }
-    this.checkPath(body.projectPath);
+    const key = this.checkPath(body.projectPath);
     if (body.ir === null || body.ir === undefined || typeof body.ir !== 'object') {
       throw httpError(400, 'INVALID_IR', 'ir must be a PipelineIR object.');
     }
@@ -63,7 +62,7 @@ export class StateController {
     if (errors.length > 0) {
       throw httpError(400, 'INVALID_IR', 'Supplied IR failed validate().', errors);
     }
-    return { saved: this.store.savePipeline(String(body.projectPath), body.ir as PipelineIR) };
+    return { saved: this.store.savePipeline(key, body.ir as PipelineIR) };
   }
 
   @Delete('state/pipeline')
@@ -73,11 +72,21 @@ export class StateController {
     if (body === null || body === undefined || typeof body !== 'object' || Array.isArray(body)) {
       throw httpError(400, 'INVALID_PROJECT_PATH', 'Request body must be a JSON object with projectPath.');
     }
-    this.checkPath(body.projectPath);
-    return { deleted: this.store.deletePipeline(String(body.projectPath)) };
+    return { deleted: this.store.deletePipeline(this.checkPath(body.projectPath)) };
   }
 
-  private checkPath(projectPath: unknown): void {
+  /**
+   * Validate the path AND return the key state is stored under.
+   *
+   * ARCH-05 / STATE-FR-005 — the key is the **workspace-relative
+   * realpath**, not the string the client sent. `demo-api`, `./demo-api`,
+   * `demo-api/` and the contained absolute path are one project; keyed by
+   * the raw string they were four separate saves, so whether the restore
+   * bar and the "edited" badges appeared depended on how the user happened
+   * to type the path. The relative form is also what `/api/projects`
+   * reports, so the badges now key off the same value the picker shows.
+   */
+  private checkPath(projectPath: unknown): string {
     const result = checkProjectPath(
       projectPath,
       this.wsRoot.realpath,
@@ -92,5 +101,6 @@ export class StateController {
     if (result.kind === 'outside') {
       throw httpError(403, 'PATH_OUTSIDE_WORKSPACE', 'The supplied projectPath resolves outside the workspace root.');
     }
+    return stateKeyFor(this.wsRoot.realpath, result.realCandidate);
   }
 }
