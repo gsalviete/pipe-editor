@@ -29,6 +29,7 @@ were *reasoned*, not accidental.
 | [ADR-0014](./0014-imported-run-blocks-stay-scripts.md) | An imported `run:` block stays a script | Accepted |
 | [ADR-0015](./0015-advisor-scoring-model.md) | The Pipeline Doctor's penalty weights and grade bands | Accepted |
 | [ADR-0016](./0016-local-state-persistence-and-share-links.md) | Where local state lives, and what a share link is | Accepted |
+| [ADR-0017](./0017-no-css-framework.md) | No CSS framework — Tailwind removed rather than adopted | Accepted |
 
 ## How to register a new decision
 

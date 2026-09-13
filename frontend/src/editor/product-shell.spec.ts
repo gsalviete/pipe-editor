@@ -35,3 +35,37 @@ describe('Product shell contract', () => {
     expect(existsSync(join(FRONTEND_ROOT, 'public', 'pipe-icon.svg'))).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// T-PRODUCT-101 (ARCH-03) — no CSS framework, per ADR-0017.
+//
+// Tailwind was installed, configured with a themed palette, and used by
+// exactly zero class names. The decision was to remove it; this guards
+// against it drifting back in unnoticed — either as an unused dependency
+// again, or as a second styling system alongside the hand-written CSS.
+// ─────────────────────────────────────────────────────────────────────────
+describe('T-PRODUCT-101 (ARCH-03) — no CSS framework', () => {
+  const root = resolve(__dirname, '..', '..');
+
+  it('declares no CSS-framework dependency', () => {
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
+    expect(deps).not.toContain('tailwindcss');
+    expect(deps).not.toContain('postcss');
+    expect(deps).not.toContain('autoprefixer');
+  });
+
+  it('ships no framework config files', () => {
+    expect(existsSync(join(root, 'tailwind.config.js'))).toBe(false);
+    expect(existsSync(join(root, 'postcss.config.js'))).toBe(false);
+  });
+
+  it('has no @tailwind directives left in the stylesheets', () => {
+    for (const file of ['src/styles/index.css', 'src/editor/editor.css']) {
+      expect(readFileSync(join(root, file), 'utf-8')).not.toMatch(/@tailwind\b/);
+    }
+  });
+});

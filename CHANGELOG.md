@@ -46,6 +46,15 @@ All notable changes to Pipe Editor are documented here. The project follows
   including safe unique-name resolution when browser privacy hides host paths.
 - Safe host-path aliases so absolute Finder paths work through Docker mounts.
 
+### Removed
+
+- Tailwind CSS, PostCSS and autoprefixer, with their config files and the
+  three `@tailwind` directives: installed, configured with a themed palette, and
+  used by zero class names across the whole TSX surface. The hand-written CSS
+  already carried the same design tokens as custom properties. See ADR-0017.
+- Dead `@react-flow` and Monaco editor style overrides, for libraries that
+  stopped being dependencies when the legacy visualizer was removed.
+
 ### Fixed
 
 - The Loaded IR snapshot is frozen at every level, not just the top, so the

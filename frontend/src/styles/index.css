@@ -1,6 +1,7 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* ARCH-03 — Tailwind was installed, configured and never used: three
+   directives, a themed config, and zero utility classes across the whole
+   TSX surface. It was removed rather than adopted; see ADR-0017. This file
+   keeps the resets that were doing the work all along. */
 
 /* ── Global resets ──────────────────────────────────────────────────────────── */
 
@@ -23,21 +24,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── React Flow overrides ────────────────────────────────────────────────────── */
-
-.react-flow__controls-button {
-  background: #161b22 !important;
-  border-color: #30363d !important;
-  color: #8b949e !important;
-  fill: #8b949e !important;
-}
-
-.react-flow__controls-button:hover {
-  background: #21262d !important;
-  color: #c9d1d9 !important;
-  fill: #c9d1d9 !important;
-}
-
 /* ── Scrollbar styling ───────────────────────────────────────────────────────── */
 
 ::-webkit-scrollbar {
@@ -56,11 +42,4 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #484f58;
-}
-
-/* ── Monaco editor overrides ────────────────────────────────────────────────── */
-
-.monaco-editor {
-  border-radius: 6px;
-  overflow: hidden;
 }
