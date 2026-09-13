@@ -233,6 +233,10 @@ its Acceptance Criteria section; this is the consolidated view.
 | STATE-AC-010 | T-SEC-006 (`bounded-read.spec.ts` — oversized manifest degrades the entry, scan completes) | ✅ |
 | STATE-AC-011 | T-STATE-011 (`share-link.spec.ts` — UTF-8 round trip incl. CJK/emoji/RTL, 400 KB document, URL-safe output, throws on corruption) | ✅ |
 | STATE-AC-012 | T-SEC-010 (`Editor.provenance.spec.tsx` — link validated and held for review; fragment cleared) | ✅ |
+| CIEXPORT-AC-013b | T-EDITOR-045 (`Editor.features.spec.tsx` — divergent stage images are named in the editor, not only in the generated file) | ✅ |
+| TEST-04 | T-WIRE-001…005 (`wire-contracts.spec.ts` — HTTP contracts for /api/advise, /api/projects, /api/directories, the execute family, and the shared error envelope) | ✅ |
+| TEST-05 | T-RUN-005 (`Editor.resolve.spec.tsx` — Docker unavailable disables Run with a reason and posts nothing; available re-enables it) | ✅ |
+| FE-06 | `editor.css.spec.ts` — visual contract asserted through `getComputedStyle` against the real cascade, not file text | ✅ |
 
 Legend: ✅ covered by passing tests, ◑ partially covered (Detector/Generator/
 Executor halves pending), ☐ not yet covered, ⊘ superseded — the

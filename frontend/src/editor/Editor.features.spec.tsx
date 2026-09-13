@@ -635,3 +635,45 @@ describe('Editor product features', () => {
     expect(screen.getByText(/Docker is not available/i)).toBeInTheDocument();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// T-EDITOR-045 (GEN-06) — divergent stage images are surfaced in the UI.
+//
+// A stage that declares an image different from the GitHub Actions job's
+// does not get it: one shared workspace needs one container. The generated
+// file has always said so in a comment, but the review's point stands — the
+// user decides in the editor, before they open the file.
+// ─────────────────────────────────────────────────────────────────────────
+describe('T-EDITOR-045 (GEN-06) — divergent stage images', () => {
+  it('says which stage asked for what, and what the workflow will use', async () => {
+    const ir = loadIr('node-pnpm-nest-basic');
+    ir.stages = ir.stages.map((s) =>
+      s.id === 'test' ? { ...s, container: { image: 'node:22-alpine' } } : s,
+    );
+    mockRoutes({ ir });
+    render(<Editor />);
+    await detectFixture();
+
+    const note = await screen.findByTestId('image-divergence-note');
+    expect(note.textContent).toContain('test');
+    expect(note.textContent).toContain('node:22-alpine');
+    expect(note.textContent).toContain('node:20-alpine');
+    expect(note.textContent).toMatch(/GitLab keeps per-stage images/i);
+  });
+
+  it('says nothing when every stage shares one image', async () => {
+    mockRoutes({ ir: loadIr('node-pnpm-nest-basic') });
+    render(<Editor />);
+    await detectFixture();
+    expect(screen.queryByTestId('image-divergence-note')).toBeNull();
+  });
+
+  it('ignores docker-build, which is its own job anyway', async () => {
+    // docker-build runs on the VM runner in a docker image by design, so
+    // it is never a divergence to report.
+    mockRoutes({ ir: loadIr('node-pnpm-nest-basic') });
+    render(<Editor />);
+    await detectFixture();
+    expect(screen.queryByTestId('image-divergence-note')).toBeNull();
+  });
+});

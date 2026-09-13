@@ -4,7 +4,9 @@
 // DNS flips to 127.0.0.1 becomes same-origin with this API, so CORS never
 // applies. What such a page cannot forge is the Host header.
 
-import { resolve } from 'path';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import * as request from 'supertest';
 import type { INestApplication } from '@nestjs/common';
 import {
@@ -59,13 +61,35 @@ describe('T-SEC-001 (SEC-01) — isAllowedHost', () => {
 });
 
 describe('T-SEC-001 (SEC-01) — over real HTTP', () => {
-  const REPO_ROOT = resolve(__dirname, '..', '..', '..', '..');
   let app: INestApplication;
+  let root: string;
   let savedRoot: string | undefined;
 
   beforeAll(async () => {
+    // A small purpose-built workspace, NOT the repository root. This suite
+    // is about the host guard; pointing it at the whole repo made
+    // `GET /api/projects` walk thousands of directories, which is fine
+    // alone and times out when the rest of the suite is competing for the
+    // machine. The guard runs before any route, so one fixture is enough.
+    root = realpathSync(mkdtempSync(join(tmpdir(), 'pipe-editor-hostguard-')));
+    mkdirSync(join(root, 'test'), { recursive: true });
+    mkdirSync(join(root, 'test', 'fixtures', 'node-pnpm-nest-basic'), { recursive: true });
+    writeFileSync(
+      join(root, 'test', 'fixtures', 'node-pnpm-nest-basic', 'package.json'),
+      JSON.stringify({
+        name: 'node-pnpm-nest-basic',
+        engines: { node: '20' },
+        packageManager: 'pnpm@9.0.0',
+        scripts: { build: 'nest build', test: 'jest' },
+      }),
+    );
+    writeFileSync(
+      join(root, 'test', 'fixtures', 'node-pnpm-nest-basic', 'pnpm-lock.yaml'),
+      'lockfileVersion: 9\n',
+    );
+
     savedRoot = process.env[PIPE_EDITOR_WORKSPACE_ROOT_ENV];
-    process.env[PIPE_EDITOR_WORKSPACE_ROOT_ENV] = REPO_ROOT;
+    process.env[PIPE_EDITOR_WORKSPACE_ROOT_ENV] = root;
     const { createApp } = await import('../../main');
     app = await createApp();
     await app.init();
@@ -73,6 +97,7 @@ describe('T-SEC-001 (SEC-01) — over real HTTP', () => {
 
   afterAll(async () => {
     await app?.close();
+    rmSync(root, { recursive: true, force: true });
     if (savedRoot === undefined) delete process.env[PIPE_EDITOR_WORKSPACE_ROOT_ENV];
     else process.env[PIPE_EDITOR_WORKSPACE_ROOT_ENV] = savedRoot;
   });

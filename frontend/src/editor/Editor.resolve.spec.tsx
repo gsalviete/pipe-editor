@@ -179,3 +179,76 @@ describe('T-EDITOR-039 — resolution is an undoable edit', () => {
     expect(gateHints()).toBeGreaterThan(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// T-RUN-005 (TEST-05) — the Docker-unavailable degradation path.
+//
+// The review's TEST-05: availability false → Run disabled with a reason was
+// never exercised end to end. It is the state every user without Docker
+// running sees first, so a regression here makes the product look broken
+// rather than gated.
+// ─────────────────────────────────────────────────────────────────────────
+describe('T-RUN-005 (TEST-05) — Docker unavailable', () => {
+  function mockWithDocker(available: boolean) {
+    const ir = loadIr('node-pnpm-nest-basic');
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      const json = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      if (u.endsWith('/api/detect') && init?.method === 'POST') return json({ ir, warnings: [] });
+      if (u.endsWith('/api/projects')) return json({ workspaceRoot: '/ws', projects: [] });
+      if (u.includes('/api/state/pipeline?')) return json({ saved: null });
+      if (u.endsWith('/api/state/pipelines')) return json({ pipelines: {} });
+      if (u.endsWith('/api/state/pipeline')) return json({ saved: { savedAt: new Date().toISOString() } });
+      if (u.endsWith('/api/advise')) return json({ score: 90, grade: 'A', findings: [] });
+      if (u.endsWith('/api/execute/availability')) return json({ available });
+      if (u.endsWith('/api/execute') && init?.method === 'POST') return json({ runId: 'run-1' }, 202);
+      if (u.endsWith('/api/execute')) return json({ runs: [] });
+      return json({}, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  async function detectWith(available: boolean) {
+    const fetchMock = mockWithDocker(available);
+    render(<Editor />);
+    fireEvent.change(screen.getByLabelText('projectPath'), {
+      target: { value: 'some-project' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /edit one app/i }));
+    await waitFor(() => screen.getByTestId('run-panel'));
+    return fetchMock;
+  }
+
+  it('disables Run and says why when the daemon is not reachable', async () => {
+    await detectWith(false);
+    const run = await screen.findByRole('button', { name: /run pipeline/i });
+    await waitFor(() => expect(run).toBeDisabled());
+    // A reason, not just a dead button.
+    expect(screen.getByText(/docker is not available/i)).toBeTruthy();
+    expect(screen.getByText(/docker unavailable/i)).toBeTruthy();
+  });
+
+  it('never posts a run while Docker is unavailable', async () => {
+    const fetchMock = await detectWith(false);
+    const run = await screen.findByRole('button', { name: /run pipeline/i });
+    await waitFor(() => expect(run).toBeDisabled());
+    fireEvent.click(run);
+    expect(
+      fetchMock.mock.calls.some(
+        ([u, i]) => String(u).endsWith('/api/execute') && i?.method === 'POST',
+      ),
+    ).toBe(false);
+  });
+
+  it('enables Run once Docker is available', async () => {
+    await detectWith(true);
+    const run = await screen.findByRole('button', { name: /run pipeline/i });
+    await waitFor(() => expect(run).not.toBeDisabled());
+    expect(screen.queryByText(/docker is not available/i)).toBeNull();
+  });
+});

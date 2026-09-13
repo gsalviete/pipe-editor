@@ -64,6 +64,10 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- The editor names a stage whose container image the GitHub Actions export cannot
+  honour, and what the workflow will use instead — the generated file always said
+  so in a comment, but the decision is made in the editor.
+
 - `Editor.tsx` sheds the stage-chain renderers and the autosave feature into
   `StageChain.tsx` and `useAutosave.ts`, so each is readable on its own.
 

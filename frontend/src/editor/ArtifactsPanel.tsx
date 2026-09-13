@@ -4,7 +4,7 @@
 // badge appears when the pipeline changes after generation.
 
 import { useMemo, useState } from 'react';
-import { serializeCanonical, type PipelineIR } from '@modules/ir';
+import { computeEffectiveChain, serializeCanonical, type PipelineIR } from '@modules/ir';
 import { ApiError, postExport, postGenerate } from './api';
 import { CopyButton, download } from './ui';
 
@@ -36,6 +36,21 @@ export function ArtifactsPanel({
     [workingIR, irValid],
   );
   const stale = bundle !== null && digest !== null && digest !== bundle.digest;
+
+  // GEN-06 — a stage that asks for a different image does not get one in
+  // the GitHub Actions export: one shared workspace needs one container, so
+  // every live stage runs in the first stage's image. The generated file
+  // says so in its header, but the review's point stands — "the comment is
+  // in the file, not in the UI", and the user decides here, before opening
+  // the file. This is the same fact, in front of them while they edit.
+  const divergentImages = useMemo(() => {
+    const live = computeEffectiveChain(workingIR).filter((s) => s.id !== 'docker-build');
+    const jobImage = live[0]?.container.image;
+    if (jobImage === undefined) return [];
+    return live
+      .filter((s) => s.container.image !== jobImage)
+      .map((s) => ({ stageId: s.id, requested: s.container.image, used: jobImage }));
+  }, [workingIR]);
 
   const disabledReason =
     blockingUnresolved !== null
@@ -108,6 +123,20 @@ export function ArtifactsPanel({
           </span>
         )}
       </div>
+
+      {divergentImages.length > 0 && (
+        <div className="editor__hint editor__hint--block" data-testid="image-divergence-note">
+          <strong>GitHub Actions runs every stage in one container.</strong>{' '}
+          {divergentImages.map((d) => (
+            <span key={d.stageId}>
+              <code>{d.stageId}</code> asks for <code>{d.requested}</code>;{' '}
+            </span>
+          ))}
+          the workflow uses <code>{divergentImages[0].used}</code> so the stages
+          share a workspace, the way a local run does. GitLab keeps per-stage
+          images. Split the stages into separate jobs if that isolation matters.
+        </div>
+      )}
 
       {error && (
         <div className="editor__error" role="alert">
