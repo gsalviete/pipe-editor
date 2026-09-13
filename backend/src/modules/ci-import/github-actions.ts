@@ -231,7 +231,7 @@ export function describeScript(run: string): string | null {
   const lines = run.split('\n');
   if (lines.length < 2) return null;
   const hasComment = lines.some((l) => l.trimStart().startsWith('#'));
-  const hasControlFlow = /^\s*(if|for|while|case|until|function)\b|<<-?\s*['\"]?\w+/m.test(run);
+  const hasControlFlow = /^\s*(if|for|while|case|until|function)\b|<<-?\s*['"]?\w+/m.test(run);
   const parts: string[] = [];
   if (hasComment) parts.push('comments');
   if (hasControlFlow) parts.push('shell control flow');

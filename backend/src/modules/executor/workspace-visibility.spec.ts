@@ -76,6 +76,6 @@ describe('WorkspaceNotVisibleError', () => {
 );
 
 if (!dockerAvailable) {
-  // eslint-disable-next-line no-console
+   
   console.log('T-EXEC-101 skipped: docker CLI not available on this host');
 }

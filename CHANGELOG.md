@@ -7,6 +7,10 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Added
 
+- ESLint in both packages, a `lint` script alongside `typecheck` and `test`, and
+  a lint step in CI. `pnpm check` is now typecheck + lint + build + test, which is
+  what CLAUDE.md always said the project must run on itself.
+
 - Pipelines now carry their provenance (detected, imported or shared). A shared
   link shows every command it contains and loads only when you say so, and the
   first run of any pipeline you did not detect yourself requires acknowledging

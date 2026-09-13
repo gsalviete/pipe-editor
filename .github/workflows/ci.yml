@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: |
+            backend/pnpm-lock.yaml
+            frontend/pnpm-lock.yaml
+
+      - name: Install backend dependencies
+        run: pnpm --dir backend install --frozen-lockfile
+
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: Build production bundles
+        run: pnpm build
+
+      - name: Typecheck source and tests
+        run: pnpm typecheck
+
+      # ARCH-04 — the product penalises a user's project for having no lint
+      # stage, and CLAUDE.md says this one must run build, lint and test on
+      # itself. It did not have a linter at all until 2026-09-13.
+      - name: Lint source and tests
+        run: pnpm lint
+
+      - name: Run specification-linked tests
+        run: pnpm test
+
+      - name: Smoke-test the production Compose stack
+        run: |
+          trap 'docker compose down --volumes' EXIT
+          docker compose config --quiet
+          docker compose up --build --wait
+          curl --fail --silent --show-error http://127.0.0.1:3000/api/health
+          curl --fail --silent --show-error http://127.0.0.1:5173/health

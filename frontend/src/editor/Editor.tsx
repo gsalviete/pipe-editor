@@ -836,7 +836,9 @@ export function Editor() {
     } catch {
       setDetectError('The shared link is corrupted and could not be decoded.');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Mount-only by design: the URL fragment is read once and cleared. The
+    // effect closes over nothing but setters, so the dependency list is
+    // genuinely empty — no suppression needed.
   }, []);
 
   async function onShareLink() {

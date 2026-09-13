@@ -176,7 +176,11 @@ export class ExecuteController {
       if (!closed) res.write(': heartbeat\n\n');
     }, 15_000);
 
-    let unsubscribe: (() => void) | undefined;
+    // Declared with an explicit initial value, not just `let`: the
+    // listener below closes over `unsubscribe` and subscribe() replays
+    // buffered events SYNCHRONOUSLY, so the closure can read this binding
+    // before subscribe() returns. `const` would make that a TDZ error.
+    let unsubscribe: (() => void) | undefined = undefined;
     unsubscribe = this.registry.subscribe(runId, (event) => {
       if (closed) return;
       res.write(`data: ${JSON.stringify(event)}\n\n`);

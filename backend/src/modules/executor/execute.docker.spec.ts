@@ -160,7 +160,7 @@ describeIfDocker('Executor (docker-gated)', () => {
 
     if (res.aggregateStatus !== 'passed') {
       // Surface the failing Stage's stderr so a CI log is debuggable.
-      // eslint-disable-next-line no-console
+       
       console.error(
         'T-EXEC-011 unexpected aggregate. stages =',
         res.stages.map((s) => ({

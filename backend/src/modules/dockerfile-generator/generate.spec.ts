@@ -139,7 +139,7 @@ describe('Dockerfile Generator — generate(ir)', () => {
   );
 
   if (!dockerAvailable) {
-    // eslint-disable-next-line no-console
+     
     console.log('T-DOCKER-006 skipped: docker CLI not available on this host');
   }
 

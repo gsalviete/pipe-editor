@@ -277,7 +277,7 @@ describe('Detector Engine', () => {
     540_000,
   );
   if (!dockerAvailable) {
-    // eslint-disable-next-line no-console
+     
     console.log('T-DET-008 skipped: docker CLI not available on this host');
   }
 

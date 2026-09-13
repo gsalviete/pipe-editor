@@ -6,6 +6,7 @@
 // ordinary Node project actually takes. These tests assert the FULL flow
 // — detect → refuse → resolve → generate → export — not just detection.
 
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { generateGithubActions, generateGitlabCi } from '../modules/ci-export';
 import { ALL_RULES, Detector } from '../modules/detector';
@@ -154,7 +155,7 @@ describe('T-FLOW-003 — fixture goldens agree with their own manifests', () => 
 
   it.each(goldens)("%s's install command matches its declared package manager", (fixture) => {
     const ir = JSON.parse(
-      require('fs').readFileSync(join(FIXTURES, fixture, 'expected-ir.json'), 'utf-8'),
+      readFileSync(join(FIXTURES, fixture, 'expected-ir.json'), 'utf-8'),
     ) as PipelineIR;
     const pm = ir.project.packageManager.name;
     const install = ir.stages.find((s) => s.id === 'install');

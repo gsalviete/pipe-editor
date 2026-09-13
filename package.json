@@ -2,10 +2,24 @@
   "name": "pipe-editor",
   "version": "0.1.0",
   "private": true,
+  "description": "Local CI studio for discovering, editing, validating and exporting portable pipelines.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "dev:backend": "cd backend && npm run start:dev",
-    "dev:frontend": "cd frontend && npm run dev",
-    "test:backend": "cd backend && npm test",
-    "install:all": "cd backend && npm install && cd ../frontend && npm install"
+    "dev:backend": "pnpm --dir backend run start:dev",
+    "dev:frontend": "pnpm --dir frontend run dev",
+    "build": "pnpm --dir backend run build && pnpm --dir frontend run build",
+    "test": "pnpm --dir backend test && pnpm --dir frontend test",
+    "test:backend": "pnpm --dir backend test",
+    "test:frontend": "pnpm --dir frontend test",
+    "typecheck": "pnpm --dir backend run typecheck && pnpm --dir frontend run typecheck",
+    "install:all": "pnpm --dir backend install && pnpm --dir frontend install",
+    "check": "pnpm typecheck && pnpm lint && pnpm build && pnpm test",
+    "lint": "pnpm --dir backend run lint && pnpm --dir frontend run lint",
+    "lint:backend": "pnpm --dir backend run lint",
+    "lint:frontend": "pnpm --dir frontend run lint"
   }
 }
