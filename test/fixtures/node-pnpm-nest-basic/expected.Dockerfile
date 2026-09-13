@@ -40,6 +40,13 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 
 # Copy build artifacts from the builder stage.
+#
+# ASSUMPTION (GEN-03): your build writes to `dist/`. pipe-editor detects
+# from manifests only and the Pipeline IR does not carry a build-output
+# directory, so this path is a convention, not an observation. If your
+# build writes somewhere else — `build/`, `out/`, `.output/` — change
+# BOTH the line below and the CMD at the end of this file. The Pipeline
+# Doctor reports this assumption on every multi-stage build.
 COPY --from=builder /app/dist ./dist
 
 # CMD inferred from the Node/NestJS convention (DOCKER-LIMIT-001).

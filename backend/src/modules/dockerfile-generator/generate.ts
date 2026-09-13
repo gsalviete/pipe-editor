@@ -129,6 +129,13 @@ function renderMultiStage(ir: PipelineIR): string {
     `RUN ${installProd}\n` +
     `\n` +
     `# Copy build artifacts from the builder stage.\n` +
+    `#\n` +
+    `# ASSUMPTION (GEN-03): your build writes to \`dist/\`. pipe-editor detects\n` +
+    `# from manifests only and the Pipeline IR does not carry a build-output\n` +
+    `# directory, so this path is a convention, not an observation. If your\n` +
+    `# build writes somewhere else — \`build/\`, \`out/\`, \`.output/\` — change\n` +
+    `# BOTH the line below and the CMD at the end of this file. The Pipeline\n` +
+    `# Doctor reports this assumption on every multi-stage build.\n` +
     `COPY --from=builder /app/dist ./dist\n` +
     `\n` +
     `# CMD inferred from the Node/NestJS convention (DOCKER-LIMIT-001).\n` +

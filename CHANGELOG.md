@@ -30,6 +30,15 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- The generated Dockerfile states, in the file, that it assumes the build writes
+  to `dist/`, and the Pipeline Doctor reports the same assumption — the tool
+  reads manifests only and cannot confirm where a build actually writes.
+- The Pipeline Doctor flags floating tags such as `node:lts-alpine`, which is the
+  image pipe-editor's own detector emits when the Node version is unknown.
+- Doctor finding ids are unique per step, so a stage with two unfrozen install
+  steps no longer produces duplicate ids and no longer docks the score twice for
+  one displayed finding.
+
 - Importing a GitHub Actions `run: |` block no longer flattens it with ` && `,
   which commented out the whole block when any line started with `#` and broke
   every loop, `if` and heredoc. The script is preserved verbatim and the importer
