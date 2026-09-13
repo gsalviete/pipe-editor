@@ -30,6 +30,14 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- The API now answers only requests whose `Host` names this machine, and refuses
+  state-changing requests carrying `Sec-Fetch-Site: cross-site`. Binding loopback
+  and narrowing CORS did not stop DNS rebinding: a page on another domain whose
+  DNS points at 127.0.0.1 becomes same-origin and could read the project list,
+  the directory tree, manifest contents and file contents, and start runs. Extra
+  hostnames can be allowed with `PIPE_EDITOR_ALLOWED_HOSTS`.
+- CORS no longer allows credentials; the API has no cookie, session or token.
+
 - `validate()` now constrains the two IR values that leave the document for a
   place that can reinterpret them: `container.image` must be a real image
   reference (so a value starting with `-` cannot shift the image slot on the

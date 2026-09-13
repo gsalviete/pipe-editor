@@ -1,23 +1,75 @@
+# pipe-editor compose stack — editor slice (detect → edit → generate).
+#
+# This file deliberately does NOT enable the Pipeline Executor. EXEC
+# requires the backend container to spawn sibling Docker containers,
+# which means either mounting the host docker socket (a real security
+# concession) or running DinD. v1's default is to keep EXEC local-dev/
+# test-only; the editor slice is what the compose demo exercises.
+# See ADR-0009 for the rationale and `docker-compose.exec.yml` for the
+# opt-in override that enables EXEC at the cost of socket exposure.
+
 services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    # Loopback-only host exposure preserves EDITOR-API-NFR-001's
+    # "no LAN exposure" intent. Inside the container the listener
+    # binds 0.0.0.0 so the frontend container can reach it via the
+    # compose network; the gate is the port mapping, not the bind.
+    # See ADR-0009.
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       PORT: 3000
+      BIND_ADDRESS: 0.0.0.0
+      # Workspace root inside the container; the host directory is
+      # bind-mounted via `volumes` below. Override the host side by
+      # setting WORKSPACE_HOST_PATH in your .env (defaults to ./test/fixtures).
+      PIPE_EDITOR_WORKSPACE_ROOT: /workspace
+      # Host-side alias: pasting a Finder path still works although Docker
+      # mounts that directory at /workspace inside the container.
+      PIPE_EDITOR_WORKSPACE_DISPLAY_ROOT: ${WORKSPACE_HOST_PATH:-}
+      # Narrow CORS to the frontend container's external origin.
       FRONTEND_URL: http://localhost:5173
-      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
-      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      # SEC-01 — the API answers only requests addressed to this machine, so
+      # a page on another domain whose DNS points at 127.0.0.1 cannot reach
+      # your workspace through your browser. Loopback names are always
+      # allowed; add any extra host you reach the editor by (nginx forwards
+      # the browser's Host header unchanged).
+      PIPE_EDITOR_ALLOWED_HOSTS: ${PIPE_EDITOR_ALLOWED_HOSTS:-}
+    volumes:
+      # Read-only by design — detect() and the editor only read the
+      # workspace; nothing writes. EXEC (when enabled via the
+      # override file) needs RW + a host-mounted temp dir; see ADR-0009.
+      - type: bind
+        source: ${WORKSPACE_HOST_PATH:-./test/fixtures}
+        target: /workspace
+        read_only: true
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      # Repo root so the build can see backend/src/modules/ir for the
+      # @modules/ir alias (single-symbol IR-type requirement of
+      # visual-editor.spec.md "Local definitions").
+      context: .
+      dockerfile: frontend/Dockerfile
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
