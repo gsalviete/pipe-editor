@@ -1,0 +1,447 @@
+import * as yaml from 'js-yaml';
+import { computeEffectiveChain, type PackageManagerName } from '../ir';
+import { generate as generateDockerfile } from '../dockerfile-generator';
+import { nextComposeArtifactPath } from './compose-files';
+import {
+  hasFailedChecks,
+  isSafeRelativePath,
+  validateWorkspacePlan,
+} from './validate';
+import { dockerTagSlug } from '../docker-naming';
+import type {
+  ComposeMode,
+  WorkspaceArtifact,
+  WorkspaceBundle,
+  WorkspaceCheck,
+  WorkspaceCiProvider,
+  WorkspacePlan,
+  WorkspaceService,
+} from './types';
+
+export class WorkspacePlanValidationError extends Error {
+  constructor(public readonly checks: WorkspaceCheck[]) {
+    super('Workspace Plan failed validation.');
+    this.name = 'WorkspacePlanValidationError';
+  }
+}
+
+export function generateWorkspaceBundle(
+  plan: WorkspacePlan,
+  provider: WorkspaceCiProvider,
+  composeMode: ComposeMode,
+): WorkspaceBundle {
+  const checks = validateWorkspacePlan(plan);
+  if (hasFailedChecks(checks)) throw new WorkspacePlanValidationError(checks);
+
+  const services = plan.services.filter((service) => service.enabled);
+  const artifacts: WorkspaceArtifact[] = [];
+  for (const service of services) {
+    const generated = generateServiceArtifacts(service);
+    artifacts.push(
+      artifactAt(service, 'Dockerfile', 'dockerfile', generated.dockerfile),
+      artifactAt(service, '.dockerignore', 'dockerignore', generated.dockerignore),
+    );
+    if (generated.nginxConfig !== undefined) {
+      artifacts.push(
+        artifactAt(service, 'nginx.conf', 'nginx-config', generated.nginxConfig),
+      );
+    }
+  }
+
+  if (composeMode === 'root') {
+    artifacts.push({
+      path: nextComposeArtifactPath('.', plan.existingComposeFiles),
+      kind: 'compose',
+      content: renderRootCompose(plan.name, services),
+    });
+  } else {
+    for (const service of services) {
+      artifacts.push({
+        path: nextComposeArtifactPath(service.path, plan.existingComposeFiles),
+        kind: 'compose',
+        serviceId: service.id,
+        content: renderStandaloneCompose(plan.name, service),
+      });
+    }
+  }
+
+  artifacts.push(
+    provider === 'github-actions'
+      ? {
+          path: '.github/workflows/ci.yml',
+          kind: 'ci',
+          content: renderGithubActions(plan.name, services),
+        }
+      : {
+          path: '.gitlab-ci.yml',
+          kind: 'ci',
+          content: renderGitlabCi(plan.name, services),
+        },
+  );
+
+  for (const generated of artifacts) {
+    if (!isSafeRelativePath(generated.path)) {
+      checks.push({
+        id: `artifact-${generated.path}-path`,
+        status: 'failed',
+        message: `Generated artifact path ${generated.path} is unsafe.`,
+      });
+    }
+  }
+  validateYamlArtifacts(artifacts, checks);
+  validateGeneratedArtifacts(artifacts, services, provider, composeMode, checks);
+  validateExistingComposeProtection(artifacts, plan.existingComposeFiles, checks);
+  if (hasFailedChecks(checks)) throw new WorkspacePlanValidationError(checks);
+
+  checks.push({
+    id: 'bundle-portable',
+    status: 'passed',
+    message: `${artifacts.length} portable files are ready to preview or download.`,
+  });
+
+  return { provider, composeMode, artifacts, checks };
+}
+
+function validateExistingComposeProtection(
+  artifacts: WorkspaceArtifact[],
+  existingComposeFiles: string[],
+  checks: WorkspaceCheck[],
+): void {
+  const existing = new Set(existingComposeFiles);
+  const collision = artifacts.find(
+    (artifact) => artifact.kind === 'compose' && existing.has(artifact.path),
+  );
+  checks.push({
+    id: 'artifact-compose-existing-file-safety',
+    status: collision === undefined ? 'passed' : 'failed',
+    message:
+      collision === undefined
+        ? `${existing.size} existing Compose file(s) are tracked and protected from replacement.`
+        : `Generated Compose path ${collision.path} would replace an existing file.`,
+  });
+}
+
+function generateServiceArtifacts(service: WorkspaceService): {
+  dockerfile: string;
+  dockerignore: string;
+  nginxConfig?: string;
+} {
+  if (service.stack !== 'vite') {
+    const generated = generateDockerfile(service.ir);
+    return {
+      ...generated,
+      dockerfile: generated.dockerfile.replace(
+        /CMD [^\n]+\n$/,
+        `CMD ${dockerCommand(service.startCommand)}\n`,
+      ),
+    };
+  }
+
+  const pm = service.ir.project.packageManager.name as PackageManagerName;
+  const version = service.ir.project.runtime.version;
+  const build = computeEffectiveChain(service.ir).find((stage) => stage.id === 'build');
+  if (build === undefined || build.steps.length === 0) {
+    throw new Error(`Vite service ${service.id} requires an enabled build stage.`);
+  }
+  const buildCommand = build.steps.map((step) => step.run).join(' && ');
+  const corepack = pm === 'npm' ? '' : 'RUN corepack enable\n\n';
+
+  const dockerfile =
+    `# Generated by pipe-editor for Vite service "${service.name}".\n` +
+    `# Build locally with: docker build -t ${service.id}:local .\n\n` +
+    `FROM node:${version}-alpine AS builder\n\n` +
+    `WORKDIR /app\n\n` +
+    corepack +
+    `COPY package.json ${lockfileFor(pm)} ./\n` +
+    `RUN ${installCommand(pm)}\n\n` +
+    `COPY . .\n` +
+    `RUN ${buildCommand}\n\n` +
+    `FROM nginx:alpine AS runtime\n\n` +
+    `COPY nginx.conf /etc/nginx/conf.d/default.conf\n` +
+    `COPY --from=builder /app/dist /usr/share/nginx/html\n\n` +
+    `EXPOSE 80\n` +
+    `CMD ["nginx", "-g", "daemon off;"]\n`;
+
+  return {
+    dockerfile,
+    dockerignore: commonDockerignore(true),
+    nginxConfig:
+      `server {\n` +
+      `    listen 80;\n` +
+      `    server_name _;\n` +
+      `    root /usr/share/nginx/html;\n` +
+      `    index index.html;\n\n` +
+      `    location / {\n` +
+      `        try_files $uri $uri/ /index.html;\n` +
+      `    }\n\n` +
+      `    location = /health {\n` +
+      `        access_log off;\n` +
+      `        default_type text/plain;\n` +
+      `        return 200 "ok\\n";\n` +
+      `    }\n` +
+      `}\n`,
+  };
+}
+
+function renderRootCompose(name: string, services: WorkspaceService[]): string {
+  const entries: Record<string, unknown> = {};
+  for (const service of services) {
+    entries[service.id] = composeService(service, service.path === '.' ? '.' : `./${service.path}`);
+  }
+  return composeDocument(name, entries);
+}
+
+function renderStandaloneCompose(name: string, service: WorkspaceService): string {
+  return composeDocument(`${name}-${service.id}`, {
+    [service.id]: composeService(service, '.'),
+  });
+}
+
+function composeService(service: WorkspaceService, context: string): Record<string, unknown> {
+  const value: Record<string, unknown> = {
+    build: { context, dockerfile: 'Dockerfile' },
+    image: `${slug(service.ir.project.name)}-${service.id}:local`,
+    restart: 'unless-stopped',
+    init: service.stack !== 'vite',
+    ports: [`${service.hostPort}:${service.containerPort}`],
+  };
+  if (service.stack === 'vite') {
+    value.healthcheck = {
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://127.0.0.1/health'],
+      interval: '10s',
+      timeout: '3s',
+      retries: 5,
+    };
+  }
+  return value;
+}
+
+function composeDocument(name: string, services: Record<string, unknown>): string {
+  return (
+    `# Generated by pipe-editor. Local orchestration only; no cloud deployment.\n` +
+    yaml.dump(
+      { name: slug(name), services },
+      { noRefs: true, lineWidth: 100, sortKeys: false },
+    )
+  );
+}
+
+function renderGithubActions(name: string, services: WorkspaceService[]): string {
+  const lines = [
+    '# Generated by pipe-editor. Validates and container-builds local services; it does not deploy.',
+    `name: ${yamlScalar(`${name} CI`)}`,
+    '',
+    'on:',
+    '  push:',
+    '    branches: [main]',
+    '  pull_request:',
+    '',
+    'permissions:',
+    '  contents: read',
+    '',
+    'jobs:',
+  ];
+  for (const service of services) {
+    lines.push(`  ${service.id}:`);
+    lines.push('    runs-on: ubuntu-latest');
+    lines.push('    steps:');
+    lines.push('      - uses: actions/checkout@v4');
+    lines.push('      - uses: actions/setup-node@v4');
+    lines.push('        with:');
+    lines.push(`          node-version: ${yamlScalar(service.ir.project.runtime.version ?? '20')}`);
+    for (const stage of verificationStages(service)) {
+      lines.push(`      - name: ${yamlScalar(`${service.name} · ${stage.name}`)}`);
+      lines.push(`        working-directory: ${yamlScalar(service.path)}`);
+      lines.push('        run: |');
+      for (const step of stage.steps) lines.push(`          ${step.run}`);
+    }
+    lines.push(`      - name: ${yamlScalar(`${service.name} · Docker build`)}`);
+    lines.push(`        working-directory: ${yamlScalar(service.path)}`);
+    lines.push(`        run: docker build -t ${service.id}:ci .`);
+  }
+  return lines.join('\n') + '\n';
+}
+
+function renderGitlabCi(name: string, services: WorkspaceService[]): string {
+  const lines = [
+    '# Generated by pipe-editor. Validates and container-builds local services; it does not deploy.',
+    `# Workspace: ${name}`,
+    'stages: [verify, containerize]',
+    'variables:',
+    '  DOCKER_HOST: tcp://docker:2375',
+    '  DOCKER_TLS_CERTDIR: ""',
+    '',
+  ];
+  for (const service of services) {
+    const stages = verificationStages(service);
+    lines.push(`${service.id}-verify:`);
+    lines.push('  stage: verify');
+    lines.push(`  image: ${stages[0]?.container.image ?? `node:${service.ir.project.runtime.version}-alpine`}`);
+    lines.push('  script:');
+    lines.push(`    - cd ${shellQuote(service.path)}`);
+    for (const stage of stages) {
+      for (const step of stage.steps) lines.push(`    - ${yamlScalar(step.run)}`);
+    }
+    lines.push('');
+    lines.push(`${service.id}-containerize:`);
+    lines.push('  stage: containerize');
+    lines.push('  image: docker:27');
+    lines.push('  services: [docker:27-dind]');
+    lines.push('  script:');
+    lines.push(`    - docker build -t ${service.id}:ci ${shellQuote(service.path)}`);
+    lines.push('');
+  }
+  return lines.join('\n').trimEnd() + '\n';
+}
+
+function verificationStages(service: WorkspaceService) {
+  return computeEffectiveChain(service.ir).filter((stage) => stage.id !== 'docker-build');
+}
+
+function artifactAt(
+  service: WorkspaceService,
+  filename: string,
+  kind: WorkspaceArtifact['kind'],
+  content: string,
+): WorkspaceArtifact {
+  return {
+    path: service.path === '.' ? filename : `${service.path}/${filename}`,
+    kind,
+    serviceId: service.id,
+    content,
+  };
+}
+
+function validateYamlArtifacts(
+  artifacts: WorkspaceArtifact[],
+  checks: WorkspaceCheck[],
+): void {
+  for (const artifact of artifacts.filter(
+    (candidate) => candidate.kind === 'compose' || candidate.kind === 'ci',
+  )) {
+    try {
+      const parsed = yaml.load(artifact.content);
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('document is not a mapping');
+      }
+      checks.push({
+        id: `artifact-${artifact.path}-yaml`,
+        status: 'passed',
+        message: `${artifact.path} is valid YAML.`,
+      });
+    } catch (error) {
+      checks.push({
+        id: `artifact-${artifact.path}-yaml`,
+        status: 'failed',
+        message: `${artifact.path} is invalid YAML: ${(error as Error).message}`,
+      });
+    }
+  }
+}
+
+function validateGeneratedArtifacts(
+  artifacts: WorkspaceArtifact[],
+  services: WorkspaceService[],
+  provider: WorkspaceCiProvider,
+  composeMode: ComposeMode,
+  checks: WorkspaceCheck[],
+): void {
+  const paths = artifacts.map((artifact) => artifact.path);
+  if (new Set(paths).size !== paths.length) {
+    checks.push({
+      id: 'artifact-paths-unique',
+      status: 'failed',
+      message: 'Generated artifact paths collide.',
+    });
+  } else {
+    checks.push({
+      id: 'artifact-paths-unique',
+      status: 'passed',
+      message: 'Every generated artifact has a unique path.',
+    });
+  }
+
+  for (const service of services) {
+    const prefix = service.path === '.' ? '' : `${service.path}/`;
+    const dockerfile = artifacts.find((artifact) => artifact.path === `${prefix}Dockerfile`);
+    const dockerValid =
+      dockerfile !== undefined &&
+      /^FROM /m.test(dockerfile.content) &&
+      /^CMD /m.test(dockerfile.content) &&
+      (service.stack !== 'vite' || dockerfile.content.includes('FROM nginx:alpine AS runtime'));
+    checks.push({
+      id: `artifact-${service.id}-dockerfile`,
+      status: dockerValid ? 'passed' : 'failed',
+      message: dockerValid
+        ? `${service.id} has a structurally valid Dockerfile.`
+        : `${service.id} is missing a complete Dockerfile.`,
+    });
+  }
+
+  const composeArtifacts = artifacts.filter((artifact) => artifact.kind === 'compose');
+  const expectedComposeCount = composeMode === 'root' ? 1 : services.length;
+  checks.push({
+    id: 'artifact-compose-count',
+    status: composeArtifacts.length === expectedComposeCount ? 'passed' : 'failed',
+    message:
+      composeArtifacts.length === expectedComposeCount
+        ? `Compose ${composeMode} mode contains the expected ${expectedComposeCount} file(s).`
+        : `Compose ${composeMode} mode produced an unexpected number of files.`,
+  });
+
+  const expectedCiPath =
+    provider === 'github-actions' ? '.github/workflows/ci.yml' : '.gitlab-ci.yml';
+  const ci = artifacts.find((artifact) => artifact.path === expectedCiPath);
+  const ciValid =
+    ci !== undefined &&
+    services.every((service) => ci.content.includes(`docker build -t ${service.id}:ci`)) &&
+    !/docker\s+push|\bkubectl\b|\bterraform\b|\bgcloud\b/i.test(ci.content);
+  checks.push({
+    id: 'artifact-ci-structure',
+    status: ciValid ? 'passed' : 'failed',
+    message: ciValid
+      ? `${expectedCiPath} validates and builds every selected service without publishing or deploying.`
+      : `${expectedCiPath} is missing required service builds or contains an out-of-scope command.`,
+  });
+}
+
+function lockfileFor(pm: PackageManagerName): string {
+  if (pm === 'pnpm') return 'pnpm-lock.yaml';
+  if (pm === 'yarn') return 'yarn.lock';
+  return 'package-lock.json';
+}
+
+function installCommand(pm: PackageManagerName): string {
+  if (pm === 'pnpm') return 'pnpm install --frozen-lockfile';
+  if (pm === 'yarn') return 'yarn install --frozen-lockfile';
+  return 'npm ci';
+}
+
+function commonDockerignore(excludeDist: boolean): string {
+  return (
+    '# Generated by pipe-editor.\n' +
+    '.git\nnode_modules\ncoverage\n.env\n.env.*\n*.log\n' +
+    (excludeDist ? 'dist\n' : '')
+  );
+}
+
+function yamlScalar(value: string): string {
+  return JSON.stringify(value);
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function dockerCommand(command: string): string {
+  const simple = command.trim().split(/\s+/);
+  if (simple.length > 0 && simple.every((token) => /^[a-zA-Z0-9_./:@+-]+$/.test(token))) {
+    return JSON.stringify(simple);
+  }
+  return JSON.stringify(['sh', '-c', command]);
+}
+
+// One shared rule (GEN-01); this wrapper only pins the fallback.
+function slug(value: string): string {
+  return dockerTagSlug(value, 'workspace');
+}

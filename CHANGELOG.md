@@ -30,6 +30,13 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- Scoped package names now produce valid Docker references. `@acme/api` used to
+  generate `docker build -t @acme/api:ci .` in every exported CI file — an
+  invalid reference that nothing in the pipeline noticed. One shared
+  `dockerTagSlug` now serves DR-011 and both workspace-bundle call sites, and
+  control characters are stripped from anything interpolated into a generated
+  comment.
+
 - Two fixture golden IRs declared npm and yarn but carried the pnpm install
   command, copied from the pnpm fixture. The Dockerfile generator branches on
   `packageManager.name` and ignores the step text, so its goldens passed and
