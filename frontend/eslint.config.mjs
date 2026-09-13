@@ -29,8 +29,10 @@ export default tseslint.config(
     plugins: { 'react-hooks': reactHooks },
     rules: {
       'react-hooks/rules-of-hooks': 'error',
-      // The one this project needed a linter for.
-      'react-hooks/exhaustive-deps': 'warn',
+      // The one this project needed a linter for. Promoted from `warn` to
+      // `error` once FE-02 removed the last two suppressions — there is
+      // nothing left for it to report, so the next one is a regression.
+      'react-hooks/exhaustive-deps': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' },

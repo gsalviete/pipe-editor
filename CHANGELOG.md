@@ -48,6 +48,16 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- Undo/redo is a single reducer over `{past, present, future}`. History used to
+  be pushed inside a state updater, which React 18 StrictMode invokes twice, so
+  every edit recorded two entries and the first ⌘Z appeared to do nothing.
+- The autosave effect no longer reads a stale `saveState`: the fact it actually
+  needs — whether anything has been persisted for this project yet — is a ref,
+  so the dependency list is complete without the effect re-running on its own
+  writes. The last two `eslint-disable` comments are gone and
+  `react-hooks/exhaustive-deps` is now an error, with warnings failing the lint
+  gate in both packages.
+
 - Autosaved pipelines are keyed by the workspace-relative realpath, so
   `demo-api`, `./demo-api`, `demo-api/` and the absolute path are one project
   rather than four separate saves. The picker's "edited" badges now key off the

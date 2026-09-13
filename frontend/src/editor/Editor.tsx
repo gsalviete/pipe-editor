@@ -580,6 +580,10 @@ export function Editor() {
   const [dropMessage, setDropMessage] = useState<string | null>(null);
   const [detectedPath, setDetectedPath] = useState<string | null>(null);
   const [importedFrom, setImportedFrom] = useState<string | null>(null);
+  // FE-02 — "has anything been persisted for this project since it was
+  // opened?" A fact about the server that the autosave effect reads but
+  // must not re-run on. Reset whenever a different project is opened.
+  const savedThisSession = useRef(false);
   // SEC-02 — where the current document came from. `detected` is the only
   // provenance whose commands the user implicitly authored.
   const [provenance, setProvenance] = useState<IRProvenance>('detected');
@@ -651,6 +655,7 @@ export function Editor() {
         setProvenance('detected');
         setWorkspacePlan(null);
         setSaveState(null);
+        savedThisSession.current = false;
         recordRecent(path, res.ir.project.name);
         // Continuity: offer to restore autosaved edits from a previous
         // session when they differ from what detection just produced.
@@ -905,6 +910,20 @@ export function Editor() {
   // Autosave: persist the working pipeline (debounced) whenever it
   // differs from the detected baseline; delete the save once the user
   // is back at baseline. Paused while a restore decision is pending.
+  //
+  // FE-02 — this effect used to branch on `saveState === null` while
+  // omitting `saveState` from its dependencies behind an eslint-disable,
+  // so the branch that decides whether a pristine pipeline issues a DELETE
+  // read whatever value the closure happened to capture. The behaviour was
+  // timing-dependent.
+  //
+  // Adding `saveState` to the dependency list is NOT the fix: the effect
+  // sets `saveState` itself, so it would re-run and re-debounce on its own
+  // writes. The question the branch actually asks — "has anything been
+  // persisted for this project since it was opened?" — is a fact about the
+  // server, not render state, and it must not retrigger the effect. That
+  // makes it a ref. `saveState` stays purely the indicator's state, the
+  // dependency list is now complete, and the suppression is gone.
   useEffect(() => {
     if (
       workingIR === null ||
@@ -918,18 +937,20 @@ export function Editor() {
     const dirty = !canonicalEquals(workingIR, loadedIR);
     // Pristine and nothing saved this session: no server call (also
     // avoids racing the restore-candidate fetch right after detect).
-    if (!dirty && saveState === null) return;
+    if (!dirty && !savedThisSession.current) return;
     const t = setTimeout(() => {
       setSaveState('saving');
       (dirty
         ? putSavedPipeline(detectedPath, workingIR)
         : deleteSavedPipeline(detectedPath)
       )
-        .then(() => setSaveState(dirty ? 'saved' : null))
+        .then(() => {
+          savedThisSession.current = dirty;
+          setSaveState(dirty ? 'saved' : null);
+        })
         .catch(() => setSaveState(null));
     }, 700);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workingIR, loadedIR, detectedPath, restoreCandidate, irValid]);
 
   // Any edit made while the restore bar is open implicitly dismisses it
@@ -1052,6 +1073,7 @@ export function Editor() {
     setImportedFrom(null);
     setProvenance('detected');
     setPendingShare(null);
+    savedThisSession.current = false;
     setDetectError(null);
     setWorkspacePlan(null);
   }

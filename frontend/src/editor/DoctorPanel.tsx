@@ -2,7 +2,7 @@
 // (debounced) on every edit; shows a health score and prioritized,
 // actionable findings.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { serializeCanonical, type PipelineIR } from '@modules/ir';
 import { Diagnosis, postAdvise } from './api';
 
@@ -19,11 +19,20 @@ export function DoctorPanel({
   const [open, setOpen] = useState(false);
   const digest = irValid ? serializeCanonical(workingIR) : null;
 
+  // The request is keyed on the canonical digest, not on the IR's object
+  // identity: every edit produces a new object, but only a change in
+  // canonical content is a different pipeline to diagnose. The linter
+  // cannot know that `digest` determines `workingIR`'s relevant content,
+  // so the IR travels through a ref — which is what "read the latest value
+  // without depending on it" means — instead of behind a suppression.
+  const latestIR = useRef(workingIR);
+  latestIR.current = workingIR;
+
   useEffect(() => {
     if (digest === null) return;
     let cancelled = false;
     const t = setTimeout(() => {
-      postAdvise(workingIR)
+      postAdvise(latestIR.current)
         .then((d) => {
           if (!cancelled) setDiagnosis(d);
         })
@@ -33,7 +42,6 @@ export function DoctorPanel({
       cancelled = true;
       clearTimeout(t);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [digest]);
 
   if (!irValid || diagnosis === null) return null;
