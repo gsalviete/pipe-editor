@@ -30,6 +30,11 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- Both CI exporters now refuse an IR with unresolved required fields, the way
+  the Dockerfile generator already did. A direct module caller previously got a
+  workflow whose base image was the `node:lts-alpine` fallback — a floating tag
+  standing in for a version the document explicitly says is unknown.
+
 - Scoped package names now produce valid Docker references. `@acme/api` used to
   generate `docker build -t @acme/api:ci .` in every exported CI file — an
   invalid reference that nothing in the pipeline noticed. One shared

@@ -10,7 +10,13 @@
 // (GEN-02) — see yaml-doc.ts for why hand-written YAML was wrong.
 
 import { sanitizeForComment } from '../docker-naming';
-import { computeEffectiveChain, PipelineIR, Stage } from '../ir';
+import {
+  computeEffectiveChain,
+  findUnrunnableReason,
+  PipelineIR,
+  Stage,
+  UnresolvedRequiredFieldError,
+} from '../ir';
 import { CiExportArtifact } from './types';
 import { dumpYaml, withHeader } from './yaml-doc';
 
@@ -27,6 +33,17 @@ interface GitlabJob {
 const CACHE_TEMPLATE_KEY = '.workspace-cache';
 
 export function generateGitlabCi(ir: PipelineIR): CiExportArtifact {
+  // GEN-08 — the same single-source precheck the Dockerfile generator
+  // applies. /api/export/:provider already refuses an unresolved IR, but
+  // the generator did not, so a direct module caller got a workflow whose
+  // base image was the node:lts-alpine fallback — a floating tag standing
+  // in for a version the document explicitly says is unknown. Two of the
+  // three generators refusing was an asymmetry, not a policy.
+  const unrunnable = findUnrunnableReason(ir);
+  if (unrunnable !== null && unrunnable.kind === 'unresolved-required-field') {
+    throw new UnresolvedRequiredFieldError(unrunnable.field);
+  }
+
   const effective = computeEffectiveChain(ir);
   const live = effective.filter((s) => s.id !== 'docker-build');
   const dockerBuild = effective.find((s) => s.id === 'docker-build');

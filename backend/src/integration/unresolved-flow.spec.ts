@@ -49,11 +49,9 @@ describe('T-FLOW-001 — a Node project that declares no version anywhere', () =
       field: '/project/packageManager/version',
     });
     expect(() => generate(ir)).toThrow();
-    // The two CI exporters do not guard themselves — see NEW-01 in
-    // docs/hardening-report.md; the guard is added in the GEN-08 commit,
-    // which flips these two assertions to .toThrow().
-    expect(() => generateGithubActions(ir)).not.toThrow();
-    expect(() => generateGitlabCi(ir)).not.toThrow();
+    // GEN-08: all three generators refuse, not just the Dockerfile one.
+    expect(() => generateGithubActions(ir)).toThrow(/unresolved/i);
+    expect(() => generateGitlabCi(ir)).toThrow(/unresolved/i);
   });
 
   // The point of the whole exercise: the dead end now has an exit.
