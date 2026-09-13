@@ -1,4 +1,18 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+coverage/
+*.tsbuildinfo
+
+# Environment — never commit secrets; .env.example documents the shape
 .env
-claude.md
-docs
-.claude
+.env.local
+.env.*.local
+
+# Tooling caches / local state
+.vite/
+.claude/
+*.log
+.DS_Store
