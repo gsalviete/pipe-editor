@@ -30,6 +30,7 @@ were *reasoned*, not accidental.
 | [ADR-0015](./0015-advisor-scoring-model.md) | The Pipeline Doctor's penalty weights and grade bands | Accepted |
 | [ADR-0016](./0016-local-state-persistence-and-share-links.md) | Where local state lives, and what a share link is | Accepted |
 | [ADR-0017](./0017-no-css-framework.md) | No CSS framework — Tailwind removed rather than adopted | Accepted |
+| [ADR-0018](./0018-ir-stays-a-source-alias-for-now.md) | The shared IR stays a source alias, for now | Accepted |
 
 ## How to register a new decision
 
