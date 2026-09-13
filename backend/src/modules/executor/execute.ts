@@ -25,6 +25,7 @@ import {
   StageStatus,
 } from './types';
 import { materializeWorkspace } from './workspace';
+import { assertWorkspaceVisible } from './workspace-visibility';
 
 const BASE_ENV: Record<string, string> = {
   LANG: 'C.UTF-8',
@@ -88,6 +89,17 @@ export async function execute(opts: ExecuteOptions): Promise<ExecuteResult> {
   }
 
   const workspace = materializeWorkspace(opts.projectPath);
+
+  // SEC-05 — prove the daemon can see the copy before any stage runs
+  // against it. A mount whose source does not exist on the host is created
+  // as an empty directory rather than refused, so without this a run could
+  // pass having validated nothing (ADR-0001's fidelity claim).
+  try {
+    await assertWorkspaceVisible(workspace.hostPath);
+  } catch (error) {
+    workspace.cleanup();
+    throw error;
+  }
   const effectiveById = new Map(effective.map((s) => [s.id, s]));
   const stages: StageResult[] = [];
   let chainFailed = false;

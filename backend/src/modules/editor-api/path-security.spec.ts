@@ -32,9 +32,36 @@ describe('checkProjectPath — security model rules', () => {
     expect(checkProjectPath('safe\0../etc', '/tmp').kind).toBe('invalid');
   });
 
-  it('rejects absolute projectPath (EDITOR-AC-003)', () => {
-    expect(checkProjectPath('/etc', '/tmp').kind).toBe('invalid');
-    expect(checkProjectPath('/Users/anyone', '/tmp').kind).toBe('invalid');
+  it('accepts contained absolute paths and rejects absolute paths outside the workspace', () => {
+    const { wsRoot, cleanup } = setupWorkspace();
+    try {
+      mkdirSync(join(wsRoot, 'absolute-child'));
+      expect(checkProjectPath(join(wsRoot, 'absolute-child'), wsRoot).kind).toBe('ok');
+      expect(checkProjectPath('/etc', wsRoot).kind).toBe('outside');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('maps a host absolute path onto its container-mounted workspace alias', () => {
+    const { wsRoot, cleanup } = setupWorkspace();
+    try {
+      mkdirSync(join(wsRoot, 'mad-test'));
+      const result = checkProjectPath(
+        '/Users/example/projects/mad-test',
+        wsRoot,
+        '/Users/example/projects',
+      );
+      expect(result).toEqual({
+        kind: 'ok',
+        realCandidate: join(wsRoot, 'mad-test'),
+      });
+      expect(
+        checkProjectPath('/Users/example/private', wsRoot, '/Users/example/projects').kind,
+      ).toBe('outside');
+    } finally {
+      cleanup();
+    }
   });
 
   it('returns not-found for a non-existing relative path', () => {

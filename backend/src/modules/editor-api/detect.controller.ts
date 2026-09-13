@@ -60,7 +60,11 @@ export class DetectController {
       );
     }
 
-    const result = checkProjectPath(body.projectPath, this.wsRoot.realpath);
+    const result = checkProjectPath(
+      body.projectPath,
+      this.wsRoot.realpath,
+      this.wsRoot.displayRoot,
+    );
     if (result.kind === 'invalid') {
       throw httpError(400, 'INVALID_PROJECT_PATH', result.reason);
     }
@@ -68,14 +72,16 @@ export class DetectController {
       throw httpError(
         404,
         'PATH_NOT_FOUND',
-        'The supplied projectPath does not exist within the workspace root.',
+        `That folder does not exist. Choose a folder inside ${this.wsRoot.displayRoot}.`,
+        { workspaceRoot: this.wsRoot.displayRoot },
       );
     }
     if (result.kind === 'outside') {
       throw httpError(
         403,
         'PATH_OUTSIDE_WORKSPACE',
-        'The supplied projectPath resolves outside the workspace root.',
+        `That folder is outside the configured workspace root: ${this.wsRoot.displayRoot}.`,
+        { workspaceRoot: this.wsRoot.displayRoot },
       );
     }
 

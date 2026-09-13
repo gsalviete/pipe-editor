@@ -1,0 +1,48 @@
+# Opt-in override: enables the Pipeline Executor inside the compose
+# backend container. EXPERIMENTAL — see ADR-0009.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.exec.yml up -d
+#
+# What this changes vs the default compose:
+#   - Mounts /var/run/docker.sock into the backend container so EXEC's
+#     `docker run` can reach the host daemon. This is effectively root
+#     on the host for anything inside the backend container; treat it
+#     as you would treat any CI runner with daemon access.
+#   - Makes the workspace bind RW (the temp-copy under /workspace/.exec-* needs writes).
+#   - Sets EXEC_AVAILABLE=true so a frontend "Run pipeline" affordance
+#     (future v0.2) can probe whether to surface the action.
+#
+# Caveats not yet solved in v1 (see ADR-0009):
+#   - EXEC's temp-copy lives INSIDE the backend container's filesystem.
+#     For the host daemon to bind-mount that temp dir into a sibling
+#     container, the path must be visible to the daemon. Wiring a
+#     shared host directory for EXEC's temp-copy is v0.2 work.
+#
+#     Until then, runs started here FAIL FAST rather than being
+#     "best-effort" (SEC-05). Before the first stage, the Executor writes
+#     a marker into the temp copy and reads it back from inside a
+#     throwaway container. If the daemon cannot see it, the run stops with
+#     DOCKER_WORKSPACE_NOT_VISIBLE.
+#
+#     That check exists because of what Docker does otherwise: a bind
+#     mount whose source does not exist on the host is CREATED as an empty
+#     directory rather than refused, so every stage would run against an
+#     empty workspace — and a tolerant script would report SUCCESS having
+#     validated nothing. A green run that verified nothing is worse than
+#     no run at all, and it would contradict the fidelity claim in
+#     ADR-0001 that the whole product rests on.
+
+services:
+  backend:
+    volumes:
+      - type: bind
+        source: ${WORKSPACE_HOST_PATH:-./test/fixtures}
+        target: /workspace
+        read_only: false
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: false
+    environment:
+      EXEC_AVAILABLE: "true"

@@ -11,6 +11,8 @@ import { existsSync, realpathSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
 
 export const PIPE_EDITOR_WORKSPACE_ROOT_ENV = 'PIPE_EDITOR_WORKSPACE_ROOT';
+export const PIPE_EDITOR_WORKSPACE_DISPLAY_ROOT_ENV =
+  'PIPE_EDITOR_WORKSPACE_DISPLAY_ROOT';
 
 export const WORKSPACE_ROOT_TOKEN = 'EDITOR_WORKSPACE_ROOT';
 
@@ -19,6 +21,8 @@ export interface WorkspaceRoot {
   raw: string;
   /** The realpath of the workspace root, cached at startup. */
   realpath: string;
+  /** Host-facing absolute path shown in the UI and accepted from paste/drop. */
+  displayRoot: string;
 }
 
 export class WorkspaceRootConfigError extends Error {
@@ -28,7 +32,10 @@ export class WorkspaceRootConfigError extends Error {
   }
 }
 
-export function resolveWorkspaceRoot(envValue: string | undefined): WorkspaceRoot {
+export function resolveWorkspaceRoot(
+  envValue: string | undefined,
+  displayValue?: string,
+): WorkspaceRoot {
   if (envValue === undefined || envValue === '') {
     throw new WorkspaceRootConfigError(
       `${PIPE_EDITOR_WORKSPACE_ROOT_ENV} must be set to an absolute path to an existing directory before the backend can start. See docs/adr/0008-workspace-root-containment-for-detect-endpoint.md.`,
@@ -49,5 +56,10 @@ export function resolveWorkspaceRoot(envValue: string | undefined): WorkspaceRoo
       `${PIPE_EDITOR_WORKSPACE_ROOT_ENV} must point at a directory; ${JSON.stringify(envValue)} is not a directory.`,
     );
   }
-  return { raw: envValue, realpath: realpathSync(envValue) };
+  const realpath = realpathSync(envValue);
+  const displayRoot =
+    displayValue !== undefined && displayValue !== '' && isAbsolute(displayValue)
+      ? displayValue
+      : realpath;
+  return { raw: envValue, realpath, displayRoot };
 }

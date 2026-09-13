@@ -49,6 +49,17 @@ describe('Editor API — workspace-root configuration (T-EDITOR-001 / EDITOR-AC-
       // SET and points at an existing directory.
       expect(typeof ws.realpath).toBe('string');
       expect(ws.realpath.length).toBeGreaterThan(0);
+      expect(ws.displayRoot).toBe(ws.realpath);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps an absolute host-facing alias for container path translation', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pipe-editor-wsroot-display-'));
+    try {
+      const ws = resolveWorkspaceRoot(dir, '/Users/example/projects');
+      expect(ws.displayRoot).toBe('/Users/example/projects');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

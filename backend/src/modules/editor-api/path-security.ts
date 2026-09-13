@@ -11,7 +11,7 @@
 // docs/adr/0008-workspace-root-containment-for-detect-endpoint.md.
 
 import { realpathSync } from 'fs';
-import { isAbsolute, resolve, sep } from 'path';
+import { isAbsolute, relative, resolve, sep } from 'path';
 
 export type PathCheckResult =
   | { kind: 'ok'; realCandidate: string }
@@ -22,6 +22,7 @@ export type PathCheckResult =
 export function checkProjectPath(
   projectPath: unknown,
   wsRootRealpath: string,
+  wsDisplayRoot = wsRootRealpath,
 ): PathCheckResult {
   if (typeof projectPath !== 'string') {
     return { kind: 'invalid', reason: 'projectPath must be a string.' };
@@ -32,15 +33,34 @@ export function checkProjectPath(
   if (projectPath.includes('\0')) {
     return { kind: 'invalid', reason: 'projectPath must not contain a NUL byte.' };
   }
+  // Absolute paths are accepted for a friendlier local-app experience, but
+  // they pass through the exact same realpath containment boundary. This lets
+  // users paste a Finder/terminal path without granting access outside the
+  // configured workspace root.
+  let candidate: string;
   if (isAbsolute(projectPath)) {
-    return {
-      kind: 'invalid',
-      reason:
-        'projectPath must be a path relative to PIPE_EDITOR_WORKSPACE_ROOT; absolute paths are rejected.',
-    };
+    const displayRelative = relative(wsDisplayRoot, projectPath);
+    const belongsToDisplayRoot =
+      displayRelative === '' ||
+      (!displayRelative.startsWith(`..${sep}`) &&
+        displayRelative !== '..' &&
+        !isAbsolute(displayRelative));
+    candidate = belongsToDisplayRoot
+      ? resolve(wsRootRealpath, displayRelative)
+      : projectPath;
+  } else {
+    candidate = resolve(wsRootRealpath, projectPath);
   }
 
-  const candidate = resolve(wsRootRealpath, projectPath);
+  // Reject lexical escapes before touching the filesystem. A path that starts
+  // outside the configured boundary should not change from 403 to 404 merely
+  // because that outside target does not exist.
+  if (
+    candidate !== wsRootRealpath &&
+    !candidate.startsWith(wsRootRealpath + sep)
+  ) {
+    return { kind: 'outside' };
+  }
 
   let realCandidate: string;
   try {

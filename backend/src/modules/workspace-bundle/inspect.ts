@@ -1,5 +1,6 @@
 import { basename, join } from 'path';
-import { readFileSync, readdirSync } from 'fs';
+import { readdirSync } from 'fs';
+import { readManifestBounded } from '../editor-api/bounded-read';
 import { ALL_RULES, Detector } from '../detector';
 import { scanProjects } from '../editor-api/project-scan';
 import { isComposeFilename, MAX_TRACKED_COMPOSE_FILES } from './compose-files';
@@ -38,7 +39,8 @@ export function inspectWorkspace(
       candidate.path === '.' ? workspaceRealpath : join(workspaceRealpath, candidate.path);
     let manifest: PackageManifest;
     try {
-      manifest = JSON.parse(readFileSync(join(absolutePath, 'package.json'), 'utf-8')) as PackageManifest;
+      // SEC-06 — bounded.
+      manifest = JSON.parse(readManifestBounded(join(absolutePath, 'package.json'))) as PackageManifest;
     } catch (error) {
       warnings.push({
         path: candidate.path,
@@ -189,7 +191,7 @@ function startCommandFor(
 
 function workspaceName(root: string): string {
   try {
-    const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')) as PackageManifest;
+    const manifest = JSON.parse(readManifestBounded(join(root, 'package.json'))) as PackageManifest;
     if (typeof manifest.name === 'string' && manifest.name.trim() !== '') return manifest.name;
   } catch {
     /* a workspace folder does not need its own manifest */

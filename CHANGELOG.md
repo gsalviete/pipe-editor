@@ -30,6 +30,16 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- A local run now proves the Docker daemon can see the temporary workspace copy
+  before any stage executes, and aborts with `DOCKER_WORKSPACE_NOT_VISIBLE`
+  otherwise. A bind mount whose source does not exist on the host is created as
+  an empty directory rather than refused, so a tolerant pipeline could previously
+  report success having validated nothing.
+- Manifest reads are size-bounded at 8 MiB, so one oversized file in a workspace
+  can no longer turn a discovery scan into an out-of-memory kill.
+- An SSE stream whose run was evicted between the lookup and the subscription now
+  closes with an explanatory event instead of staying open emitting heartbeats.
+
 - The API now answers only requests whose `Host` names this machine, and refuses
   state-changing requests carrying `Sec-Fetch-Site: cross-site`. Binding loopback
   and narrowing CORS did not stop DNS rebinding: a page on another domain whose

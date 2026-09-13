@@ -19,7 +19,18 @@ export type GenerateErrorCode =
   | 'UNSUPPORTED_RUNTIME'
   | 'INTERNAL_GENERATOR_DEFECT';
 
-export type ErrorCode = DetectErrorCode | GenerateErrorCode;
+export type ExecuteErrorCode = 'DOCKER_UNAVAILABLE' | 'RUN_NOT_FOUND';
+
+export type ImportErrorCode = 'UNSUPPORTED_CI_CONFIG';
+
+export type WorkspaceErrorCode = 'INVALID_WORKSPACE_PLAN';
+
+export type ErrorCode =
+  | DetectErrorCode
+  | GenerateErrorCode
+  | ExecuteErrorCode
+  | ImportErrorCode
+  | WorkspaceErrorCode;
 
 export interface ErrorEnvelope {
   error: {

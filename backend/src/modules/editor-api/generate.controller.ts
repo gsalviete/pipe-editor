@@ -10,16 +10,15 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { generate, UnsupportedRuntimeError } from '../dockerfile-generator';
-import { PipelineIR, validate } from '../ir';
+import {
+  findUnrunnableReason,
+  PipelineIR,
+  UnresolvedRequiredFieldError,
+  validate,
+} from '../ir';
 import { httpError } from './http-errors';
 
 const ALLOWED_FIELDS = ['ir'] as const;
-
-function findUnresolvedRequiredField(ir: PipelineIR): string | null {
-  if (ir.project?.packageManager?.name == null) return '/project/packageManager/name';
-  if (ir.project?.runtime?.version == null) return '/project/runtime/version';
-  return null;
-}
 
 @ApiTags('Editor')
 @Controller('api')
@@ -63,13 +62,16 @@ export class GenerateController {
     }
     const ir = body.ir as PipelineIR;
 
-    const unresolvedField = findUnresolvedRequiredField(ir);
-    if (unresolvedField !== null) {
+    // Single-source precheck: defer to @modules/ir's helper rather
+    // than carrying a per-controller `== null` ladder. Three-amendment
+    // package (Pipeline Executor spec Decision D, 2026-06-22).
+    const unrunnable = findUnrunnableReason(ir);
+    if (unrunnable !== null && unrunnable.kind === 'unresolved-required-field') {
       throw httpError(
         422,
         'UNRESOLVED_REQUIRED_FIELD',
-        `Required field ${unresolvedField} is unresolved; resolve it before generating.`,
-        { field: unresolvedField },
+        `Required field ${unrunnable.field} is unresolved; resolve it before generating.`,
+        { field: unrunnable.field },
       );
     }
 
@@ -77,6 +79,14 @@ export class GenerateController {
       const { dockerfile, dockerignore } = generate(ir);
       return { dockerfile, dockerignore };
     } catch (err) {
+      if (err instanceof UnresolvedRequiredFieldError) {
+        // Defense-in-depth: the helper above should have caught this,
+        // but the generator now throws via the same helper. Map to the
+        // same 422 code so the wire contract is stable.
+        throw httpError(422, 'UNRESOLVED_REQUIRED_FIELD', err.message, {
+          field: err.path,
+        });
+      }
       if (err instanceof UnsupportedRuntimeError) {
         throw httpError(422, 'UNSUPPORTED_RUNTIME', err.message, {
           field: '/project/runtime/name',

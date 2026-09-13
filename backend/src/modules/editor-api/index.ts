@@ -13,5 +13,11 @@ export type {
   DetectErrorCode,
   ErrorCode,
   ErrorEnvelope,
+  ExecuteErrorCode,
   GenerateErrorCode,
+  WorkspaceErrorCode,
 } from './http-errors';
+export { scanProjects } from './project-scan';
+export type { DiscoveredProject } from './project-scan';
+export { isTerminalRunEvent, RunRegistry } from './run-registry';
+export type { RunEvent, RunStatus, RunSummary } from './run-registry';

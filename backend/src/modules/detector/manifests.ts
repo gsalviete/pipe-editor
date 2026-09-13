@@ -2,7 +2,7 @@
 // - package.json: hard-throw on parse failure (DET-FR-019).
 // - all others: warn-and-skip on parse failure.
 
-import { existsSync, readFileSync, statSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import * as yaml from 'js-yaml';
 import {
@@ -13,6 +13,7 @@ import {
   TsConfigJson,
 } from './types';
 import { MalformedPackageJsonError } from './errors';
+import { readManifestBounded } from '../editor-api/bounded-read';
 
 export interface Warning {
   manifest: string;
@@ -37,7 +38,20 @@ export function readManifests(rootPath: string): ReadResult {
     // `.nvmrc`/`.node-version` are evidence for DR-004 but do not by
     // themselves make a folder a project (see NON_QUALIFYING_MANIFESTS).
     if (!NON_QUALIFYING_MANIFESTS.includes(name)) anyPresent = true;
-    const raw = readFileSync(path, 'utf-8');
+    // SEC-06 — an oversized manifest is skipped with a warning rather than
+    // read into memory. package.json keeps its hard-throw contract
+    // (DET-FR-019): a project whose package.json cannot be read is not a
+    // project this tool can reason about.
+    let raw: string;
+    try {
+      raw = readManifestBounded(path);
+    } catch (e) {
+      if (name === 'package.json') {
+        throw new MalformedPackageJsonError(path, (e as Error).message);
+      }
+      warnings.push({ manifest: name, message: (e as Error).message });
+      continue;
+    }
 
     if (name === 'package.json') {
       try {
