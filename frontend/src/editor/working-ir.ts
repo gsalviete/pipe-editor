@@ -182,3 +182,30 @@ export function listPipelineCommands(ir: PipelineIR): PipelineCommand[] {
   }
   return commands;
 }
+
+/**
+ * A frozen deep clone of an IR — the Loaded IR snapshot (EDITOR-UI-FR-012).
+ *
+ * FE-03 — this was `Object.freeze(JSON.parse(JSON.stringify(ir)))`, which
+ * freezes the TOP LEVEL only: `loadedIR.project.runtime.version = 'x'`
+ * succeeded silently. EDITOR-AC-024 tests the immutability invariant
+ * behaviourally (the snapshot is byte-equal before and after a toggle), so
+ * a structural violation would only have surfaced as a mysterious failure
+ * of that assertion somewhere else.
+ *
+ * Freezing every level means an accidental write throws in strict mode —
+ * which all ES modules are — instead of corrupting the baseline the
+ * autosave's dirty check compares against.
+ */
+export function freezeDeep<T>(value: T): T {
+  if (value === null || typeof value !== 'object') return value;
+  for (const key of Object.keys(value as Record<string, unknown>)) {
+    freezeDeep((value as Record<string, unknown>)[key]);
+  }
+  return Object.freeze(value);
+}
+
+/** The Loaded IR snapshot: a deep clone, deeply frozen. */
+export function snapshotLoadedIR(ir: PipelineIR): PipelineIR {
+  return freezeDeep(JSON.parse(JSON.stringify(ir)) as PipelineIR);
+}

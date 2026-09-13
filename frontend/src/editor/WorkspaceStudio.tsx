@@ -315,35 +315,21 @@ function ServiceCard({
       </header>
 
       <div className="workspace-service__ports">
-        <label>
-          Host port
-          <input
-            type="number"
-            min="1"
-            max="65535"
-            value={service.hostPort}
-            aria-label={`${service.name} host port`}
-            disabled={!service.enabled}
-            onChange={(event) =>
-              onUpdate((current) => ({ ...current, hostPort: Number(event.target.value) }))
-            }
-          />
-        </label>
+        <PortField
+          label="Host port"
+          ariaLabel={`${service.name} host port`}
+          value={service.hostPort}
+          disabled={!service.enabled}
+          onCommit={(port) => onUpdate((current) => ({ ...current, hostPort: port }))}
+        />
         <span aria-hidden="true">→</span>
-        <label>
-          Container port
-          <input
-            type="number"
-            min="1"
-            max="65535"
-            value={service.containerPort}
-            aria-label={`${service.name} container port`}
-            disabled={!service.enabled}
-            onChange={(event) =>
-              onUpdate((current) => ({ ...current, containerPort: Number(event.target.value) }))
-            }
-          />
-        </label>
+        <PortField
+          label="Container port"
+          ariaLabel={`${service.name} container port`}
+          value={service.containerPort}
+          disabled={!service.enabled}
+          onCommit={(port) => onUpdate((current) => ({ ...current, containerPort: port }))}
+        />
       </div>
 
       {service.stack !== 'vite' && (
@@ -381,6 +367,86 @@ function ServiceCard({
         </div>
       </details>
     </article>
+  );
+}
+
+/**
+ * A port field that keeps what the user typed (UX-04).
+ *
+ * These were `value={service.hostPort}` with
+ * `onChange={… Number(event.target.value)}`. `Number('')` is 0, so clearing
+ * the field wrote port 0 into the plan — which passes client-side and comes
+ * back later as a server check failure. Every intermediate typing state had
+ * the same problem: selecting "8080" and typing "3" briefly wrote 3.
+ *
+ * The draft is a string while the field has focus and is committed on blur
+ * or Enter. An invalid draft is reported inline and the last good value is
+ * restored, so the plan only ever holds a port that is really a port.
+ */
+function PortField({
+  label,
+  ariaLabel,
+  value,
+  disabled,
+  onCommit,
+}: {
+  label: string;
+  ariaLabel: string;
+  value: number;
+  disabled: boolean;
+  onCommit: (port: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function commit() {
+    if (draft === null) return;
+    const trimmed = draft.trim();
+    const parsed = /^\d+$/.test(trimmed) ? Number(trimmed) : NaN;
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+      setError(
+        trimmed === ''
+          ? 'A port is required.'
+          : `"${trimmed}" is not a port — use a whole number from 1 to 65535.`,
+      );
+      setDraft(null);
+      return;
+    }
+    setError(null);
+    setDraft(null);
+    if (parsed !== value) onCommit(parsed);
+  }
+
+  return (
+    <label className="workspace-port">
+      {label}
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={draft ?? String(value)}
+        aria-label={ariaLabel}
+        aria-invalid={error !== null}
+        disabled={disabled}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setError(null);
+        }}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit();
+          if (event.key === 'Escape') {
+            setDraft(null);
+            setError(null);
+          }
+        }}
+      />
+      {error !== null && (
+        <span className="workspace-port__error" role="alert">
+          {error}
+        </span>
+      )}
+    </label>
   );
 }
 

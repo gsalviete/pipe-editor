@@ -19,10 +19,14 @@ export default defineConfig({
     },
   },
   server: {
+    host: '127.0.0.1',
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        // Keep the development proxy on the same IPv4 loopback address the
+        // backend binds by default. On machines where `localhost` resolves to
+        // ::1 first, the old target made a healthy API look unavailable.
+        target: 'http://127.0.0.1:3000',
         changeOrigin: true,
       },
     },

@@ -48,6 +48,17 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- The Loaded IR snapshot is frozen at every level, not just the top, so the
+  immutability the editor promises is enforced structurally rather than only
+  asserted behaviourally.
+- Port fields in the Workspace Studio keep what you typed and validate on blur.
+  Clearing one used to write port 0 into the plan, which passed client-side and
+  failed later as a server check.
+- Both packages now depend on the same `js-yaml` version. The editor previously
+  parsed YAML with a different major version than the API that would parse it
+  back, and a cross-boundary round-trip test now covers the values where the two
+  YAML spec versions disagree.
+
 - Undo/redo is a single reducer over `{past, present, future}`. History used to
   be pushed inside a state updater, which React 18 StrictMode invokes twice, so
   every edit recorded two entries and the first ⌘Z appeared to do nothing.

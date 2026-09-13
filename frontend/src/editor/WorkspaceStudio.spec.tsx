@@ -34,7 +34,10 @@ describe('WorkspaceStudio', () => {
     expect(screen.getByText('apps/web/docker-compose.dev.yml')).toBeInTheDocument();
 
     const port = screen.getByLabelText('web host port');
+    // UX-04: a port field holds raw text while focused and commits on blur,
+    // so intermediate typing states never reach the plan.
     fireEvent.change(port, { target: { value: '4173' } });
+    fireEvent.blur(port);
     const build = screen.getByLabelText('web build command 1');
     await user.clear(build);
     await user.type(build, 'npm run build:production');
@@ -119,3 +122,62 @@ function bundle(): WorkspaceBundle {
     ],
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// T-WORKSPACE-104 (UX-04) — port fields never write a non-port.
+//
+// These were `value={service.hostPort}` with `Number(event.target.value)`
+// on change. `Number('')` is 0, so clearing the field wrote port 0 into the
+// plan — valid client-side, and a server check failure later. Every
+// intermediate typing state had the same problem.
+// ─────────────────────────────────────────────────────────────────────────
+describe('T-WORKSPACE-104 (UX-04) — port fields', () => {
+  async function renderStudio() {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<WorkspaceStudio initialPlan={plan()} onBack={() => undefined} />);
+    return screen.getByLabelText('web host port') as HTMLInputElement;
+  }
+
+  it('shows the current port', async () => {
+    expect((await renderStudio()).value).toBe('8080');
+  });
+
+  it('keeps an intermediate typing state without committing it', async () => {
+    const port = await renderStudio();
+    fireEvent.change(port, { target: { value: '4' } });
+    // Displayed, not committed — no error, nothing written yet.
+    expect(port.value).toBe('4');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it.each(['', '0', '65536', 'abc', '-1', '80.5'])(
+    'refuses %p on blur and restores the last good value',
+    async (bad) => {
+      const port = await renderStudio();
+      fireEvent.change(port, { target: { value: bad } });
+      fireEvent.blur(port);
+      expect(screen.getByRole('alert')).toBeTruthy();
+      expect(port.value).toBe('8080');
+    },
+  );
+
+  it('commits a valid port on blur', async () => {
+    const port = await renderStudio();
+    fireEvent.change(port, { target: { value: '4173' } });
+    fireEvent.blur(port);
+    expect(port.value).toBe('4173');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('commits on Enter and abandons the draft on Escape', async () => {
+    const port = await renderStudio();
+    fireEvent.change(port, { target: { value: '9000' } });
+    fireEvent.keyDown(port, { key: 'Enter' });
+    expect(port.value).toBe('9000');
+
+    fireEvent.change(port, { target: { value: '1234' } });
+    fireEvent.keyDown(port, { key: 'Escape' });
+    expect(port.value).toBe('9000');
+  });
+});

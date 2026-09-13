@@ -46,6 +46,7 @@ import { decodeShareHash, encodeShareHash } from './share-link';
 import {
   hasUnresolvedRequiredField,
   listPipelineCommands,
+  snapshotLoadedIR,
   type IRProvenance,
   insertStageAfter,
   nextCustomStageId,
@@ -647,7 +648,7 @@ export function Editor() {
       setDetectError(null);
       try {
         const res = await postDetect(path);
-        setLoadedIR(Object.freeze(JSON.parse(JSON.stringify(res.ir))) as PipelineIR);
+        setLoadedIR(snapshotLoadedIR(res.ir));
         reset(res.ir);
         setWarnings(res.warnings);
         setDetectedPath(path);
@@ -717,7 +718,7 @@ export function Editor() {
         provenance?: IRProvenance;
       },
     ) => {
-      setLoadedIR(Object.freeze(JSON.parse(JSON.stringify(ir))) as PipelineIR);
+      setLoadedIR(snapshotLoadedIR(ir));
       reset(ir);
       setWarnings(opts.warnings ?? []);
       setDetectedPath(opts.runnablePath ?? null);

@@ -1461,3 +1461,18 @@
   color: var(--warn);
   font-weight: 500;
 }
+
+/* UX-04 — a port field reports a bad draft inline instead of writing 0. */
+.workspace-port {
+  position: relative;
+}
+.workspace-port input[aria-invalid='true'] {
+  border-color: var(--err);
+}
+.workspace-port__error {
+  display: block;
+  margin-top: 4px;
+  color: var(--err);
+  font-size: 11px;
+  max-width: 16rem;
+}
