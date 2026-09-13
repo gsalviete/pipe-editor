@@ -34,7 +34,7 @@ describe('ImportController bounds (PRODUCT-AC-011)', () => {
     }
   }
 
-  it('measures pasted UTF-8 content in bytes, not JavaScript characters', () => {
+  it('T-CIIMPORT-010 (CIIMPORT-AC-010) — the 512 KiB bound is measured in bytes, not characters', () => {
     // 300k emoji = 600k UTF-16 code units but 1.2 MB when encoded as UTF-8.
     expectTooLarge(() => controller.import({ content: '🚀'.repeat(300_000) }));
   });

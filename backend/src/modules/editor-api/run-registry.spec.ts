@@ -140,7 +140,7 @@ describe('RunRegistry', () => {
     expect(registry.get(id)?.result?.aggregateStatus).toBe('aborted');
   });
 
-  it('retention: finished runs are evicted beyond the cap; running runs are kept', async () => {
+  it('T-STATE-008 (STATE-AC-008) — finished runs evicted beyond the cap; running runs kept', async () => {
     const registry = new RunRegistry(fakeExecute(), 2);
     const first = registry.start(FIXTURE_IR, '/abs/project', 'p1');
     await settle();

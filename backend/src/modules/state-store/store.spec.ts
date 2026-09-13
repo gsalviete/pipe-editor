@@ -26,7 +26,7 @@ describe('StateStore', () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  it('saves, reads back (across instances), lists and deletes pipelines', () => {
+  it('T-STATE-001 (STATE-AC-001) — saves, reads back across instances, lists and deletes pipelines', () => {
     const store = new StateStore(dataDir, '/ws/a');
     expect(store.getPipeline('proj')).toBeNull();
 
@@ -43,13 +43,13 @@ describe('StateStore', () => {
     expect(new StateStore(dataDir, '/ws/a').getPipeline('proj')).toBeNull();
   });
 
-  it('namespaces state per workspace root', () => {
+  it('T-STATE-002 (STATE-AC-002) — state is namespaced per workspace root', () => {
     new StateStore(dataDir, '/ws/a').savePipeline('proj', FIXTURE_IR);
     expect(new StateStore(dataDir, '/ws/b').getPipeline('proj')).toBeNull();
     expect(readdirSync(join(dataDir, 'workspaces'))).toHaveLength(1);
   });
 
-  it('tolerates corrupt files by starting clean', () => {
+  it('T-STATE-003 (STATE-AC-003) — a corrupt state file yields empty state, not an error', () => {
     const store = new StateStore(dataDir, '/ws/a');
     store.savePipeline('proj', FIXTURE_IR);
     // Corrupt every file in the workspace dir.
@@ -62,7 +62,7 @@ describe('StateStore', () => {
     expect(new StateStore(dataDir, '/ws/a').getPipeline('proj')).not.toBeNull();
   });
 
-  it('caps persisted run history at 20, newest first', () => {
+  it('T-STATE-008a (STATE-AC-008) — persisted run history capped at 20, newest first', () => {
     const store = new StateStore(dataDir, '/ws/a');
     for (let i = 0; i < 60; i++) {
       store.appendRun({
@@ -78,7 +78,7 @@ describe('StateStore', () => {
     expect(runs[19].id).toBe('run-40');
   });
 
-  it('write failures never throw (read-only data dir)', () => {
+  it('T-STATE-004 (STATE-AC-004) — write failures never throw (read-only data dir)', () => {
     const store = new StateStore(join(dataDir, 'blocked'), '/ws/a');
     mkdirSync(join(dataDir, 'blocked'), { recursive: true });
     // Make the parent read-only so mkdir of workspaces/ fails.

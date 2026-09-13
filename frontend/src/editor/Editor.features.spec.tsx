@@ -487,7 +487,7 @@ describe('Editor product features', () => {
     expect(screen.getByText(/imported from a shared link/)).toBeInTheDocument();
   });
 
-  it('autosaves edits (PUT), shows Saved ✓, and deletes the save when back at baseline', async () => {
+  it('T-EDITOR-AUTOSAVE (STATE-AC-006) — PUT on divergence, Saved ✓, DELETE back at baseline', async () => {
     const fetchMock = mockRoutes({ ir: loadIr('node-pnpm-nest-basic') });
     render(<Editor />);
     await detectFixture();
@@ -519,7 +519,7 @@ describe('Editor product features', () => {
     );
   });
 
-  it('offers to restore differing saved edits after detect; Restore applies them undoably', async () => {
+  it('T-EDITOR-RESTORE (STATE-AC-007) — offers to restore differing saved edits after detect; Restore applies them undoably', async () => {
     const detected = loadIr('node-pnpm-nest-basic');
     const edited = {
       ...detected,

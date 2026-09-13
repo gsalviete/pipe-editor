@@ -49,10 +49,14 @@ with a real consumer* before the expensive components are built.
 | 2 | [`dockerfile-generator.spec.md`](./dockerfile-generator.spec.md) | `DOCKER` | ✅ Implemented | Cheap consumer that validates the IR before it hardens. |
 | 3 | [`detector-engine.spec.md`](./detector-engine.spec.md) | `DET` | ✅ Implemented | How the project is traversed and reported. Pairs with [Detection Rules](../rules/detection-rules.md). |
 | 4 | [`pipeline-executor.spec.md`](./pipeline-executor.spec.md) | `EXEC` | ✅ Implemented | The expensive component. Accepted 2026-06-22; introduces the cross-cutting `findUnrunnableReason` helper in `@modules/ir` consumed by EXEC, DOCKER, and EDITOR. |
-| 5 | `github-actions-generator.spec.md` | `GHA` | ☐ Not started | Co-designed with the executor for fidelity (same IR, two render targets). |
+| 5 | ~~`github-actions-generator.spec.md`~~ | ~~`GHA`~~ | ⊘ Retired | Never written. Two CI generators shipped in its place; specified retroactively as `CI-EXPORT` below. |
 | 6 | [`visual-editor.spec.md`](./visual-editor.spec.md) | `EDITOR` | ✅ Implemented | Edits the IR. Comes last; depends on everything. Pairs with [ADR-0008](../adr/0008-workspace-root-containment-for-detect-endpoint.md). Accepted 2026-06-21. |
 | 7 | [`product-shell.spec.md`](./product-shell.spec.md) | `PRODUCT` | ✅ Implemented | Cross-cutting productization and experience hardening. Verified on desktop/mobile plus the full build and test gates. |
 | 8 | [`workspace-bundle.spec.md`](./workspace-bundle.spec.md) | `WORKSPACE` | ✅ Implemented | Post-MVP multi-service discovery and portable Docker/Compose/basic-CI bundle. |
+| 9 | [`ci-export.spec.md`](./ci-export.spec.md) | `CI-EXPORT` | ✅ Implemented | **Retroactive.** GitHub Actions + GitLab CI generation. Replaces the retired `GHA` slot. |
+| 10 | [`ci-import.spec.md`](./ci-import.spec.md) | `CI-IMPORT` | ✅ Implemented | **Retroactive.** GitHub Actions + GitLab CI import and project inference. |
+| 11 | [`advisor.spec.md`](./advisor.spec.md) | `ADVISOR` | ✅ Implemented | **Retroactive.** The Pipeline Doctor: rule set, severities, scoring. |
+| 12 | [`state.spec.md`](./state.spec.md) | `STATE` | ✅ Implemented | **Retroactive.** Autosave, run history, discovery routes and share links. |
 
 Update the **Status** column as specs progress. This table is the project's
 at-a-glance progress board.
@@ -91,5 +95,33 @@ were done first:
    been covered since EXEC and DOCKER landed, so the row now cites all of
    them.
 
-`GHA` remains the one spec that is not started — see `CI-EXPORT` in the
-retroactive specs, which covers the code that shipped in its place.
+The `GHA` slot is retired rather than pending: `CI-EXPORT` covers the code
+that shipped in its place, for two providers rather than one.
+
+## Retroactive specs, 2026-09-13
+
+Four specs in the table above are marked **Retroactive**. They describe code
+that shipped *before* they were written, which is a direct breach of the one
+rule in `CLAUDE.md`: *no implementation code before an Accepted spec covers
+it.* The adversarial review measured the gap at roughly a third of the
+backend (**SDD-01**).
+
+They are labelled rather than quietly backdated. A spec written after its
+code is a weaker artifact than one written before — it cannot have shaped
+the design, and it is liable to describe what exists instead of what should
+— so each carries a `Provenance` section saying so.
+
+What made the exercise worth doing rather than cosmetic: **writing them
+found defects**. Stating a requirement forces the question "does the code
+do this?", and four times the answer was no in a way no test had asked:
+
+| Spec | Found while writing it |
+|---|---|
+| `CI-EXPORT` | YAML built by string concatenation with no parse-back (GEN-02); the GitLab `docker-build` image hardcoded against the IR (GEN-05); neither generator consulting `findUnrunnableReason` (GEN-08) |
+| `CI-IMPORT` | `run:` blocks flattened with ` && ` (IMP-01); a shared `env` object (IMP-02); package-manager inference from loose text with no provenance warning (IMP-03); regex provider sniffing (IMP-04) |
+| `ADVISOR` | finding ids not unique per step, double-penalising the score (UX-05); no rule for the floating tag the product itself emits (UX-06) |
+| `STATE` | autosave keyed by the raw client string (ARCH-05); unbounded manifest reads (SEC-06); deprecated share-link encoding (FE-04) |
+
+That is the argument for the process stated as evidence rather than as a
+claim: the specs are not documentation of the code, they are a second
+opinion about it.

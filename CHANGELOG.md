@@ -7,6 +7,15 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Added
 
+- Retroactive specifications for the four components that had shipped without
+  one — `CI-EXPORT`, `CI-IMPORT`, `ADVISOR` and `STATE` — each with `FR`/`AC`
+  ids mapped to the tests that already existed, and a Provenance section saying
+  plainly that the spec followed the code.
+- ADRs for the decisions that had been made in code with no record: YAML
+  emission and the parse-back check (0013), imported `run:` blocks staying
+  scripts (0014), the Doctor's weights and grade bands (0015), and where local
+  state lives and what a share link is (0016).
+
 - ESLint in both packages, a `lint` script alongside `typecheck` and `test`, and
   a lint step in CI. `pnpm check` is now typecheck + lint + build + test, which is
   what CLAUDE.md always said the project must run on itself.

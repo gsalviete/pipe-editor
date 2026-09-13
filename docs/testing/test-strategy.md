@@ -186,8 +186,56 @@ its Acceptance Criteria section; this is the consolidated view.
 | WORKSPACE-AC-011 | T-WORKSPACE-011 (`Editor.workspace.spec.tsx`, `WorkspaceStudio.spec.tsx` — inspect/edit/select/preview) | ✅ |
 | WORKSPACE-AC-012 | T-WORKSPACE-012 (`workspace-bundle.spec.ts`, `WorkspaceStudio.spec.tsx` — existing Compose tracking, collision-free naming and UI notice) | ✅ |
 
+| CIEXPORT-AC-001 | T-CIEXPORT-001 (`export.spec.ts` — one shared-workspace job + docker-build job) | ✅ |
+| CIEXPORT-AC-002 | T-CIEXPORT-002 (`export.spec.ts` — per-stage jobs, per-job images, lockfile-keyed cache via `extends`) | ✅ |
+| CIEXPORT-AC-003 | T-CIEXPORT-003 (`export.spec.ts` — disabled stages spliced out via the effective chain) | ✅ |
+| CIEXPORT-AC-004 | T-FLOW-001 (`unresolved-flow.spec.ts` — both exporters refuse an unresolved IR) | ✅ |
+| CIEXPORT-AC-005 | T-ADV-003 (`ci-export/adversarial.spec.ts` — every exported document parses back) | ✅ |
+| CIEXPORT-AC-006 | T-ADV-004 (`ci-export/adversarial.spec.ts` — 8 hostile stage names round-trip) | ✅ |
+| CIEXPORT-AC-007 | T-ADV-005 (`ci-export/adversarial.spec.ts` — multi-line run becomes a block scalar) | ✅ |
+| CIEXPORT-AC-008 | T-ADV-005 (`ci-export/adversarial.spec.ts` — steps on separate lines, never ` && `) | ✅ |
+| CIEXPORT-AC-009 | T-ADV-006 (`ci-export/adversarial.spec.ts` — 6 hostile branch literals; bare `on:` key) | ✅ |
+| CIEXPORT-AC-010 | T-ADV-006 (`ci-export/adversarial.spec.ts` — hostile env values; per-step env objects) | ✅ |
+| CIEXPORT-AC-011 | T-ADV-007 (`ci-export/adversarial.spec.ts` — no injection through the header) | ✅ |
+| CIEXPORT-AC-012 | T-CIEXPORT-012 + T-CIEXPORT-012b (`export.spec.ts` — docker-build image from the IR, dind derived, privileged runner declared) | ✅ |
+| CIEXPORT-AC-013 | T-CIEXPORT-013 (`export.spec.ts` — GitLab keeps per-stage images; GitHub notes the divergence in the header) | ✅ |
+| CIEXPORT-AC-014 | T-CIEXPORT-014a/014b (`export.spec.ts` — honest noop for an all-disabled chain, both providers) | ✅ |
+| CIEXPORT-AC-015 | T-CIEXPORT-015 (`export.spec.ts` — corepack enabled exactly once) | ✅ |
+| CIIMPORT-AC-001 | T-CIIMPORT-001 (`import.spec.ts` — jobs → stages, run → steps, project inferred) | ✅ |
+| CIIMPORT-AC-002 | T-CIIMPORT-002 (`import.spec.ts` — GitLab job order, per-job images, variables) | ✅ |
+| CIIMPORT-AC-003 | T-IMP-101 (`ci-import/adversarial.spec.ts` — multi-line run keeps its newlines, no ` && `) | ✅ |
+| CIIMPORT-AC-004 | T-IMP-101 (`ci-import/adversarial.spec.ts` — comments and control flow warned; plain command not) | ✅ |
+| CIIMPORT-AC-005 | T-IMP-102 (`ci-import/adversarial.spec.ts` — per-step env objects) | ✅ |
+| CIIMPORT-AC-006 | T-IMP-103 (`ci-import/adversarial.spec.ts` — install command wins over loose mentions; guesses flagged) | ✅ |
+| CIIMPORT-AC-007 | T-IMP-104 (`ci-import/adversarial.spec.ts` — k8s/Azure/Compose/prose refused; real files still recognized) | ✅ |
+| CIIMPORT-AC-008 | T-CIIMPORT-001 (`import.spec.ts` — unknown actions skipped with a warning; setup-node feeds inference) | ✅ |
+| CIIMPORT-AC-009 | T-CIIMPORT-009 (`import.spec.ts` — export → import round trip yields a valid IR) | ✅ |
+| CIIMPORT-AC-010 | T-CIIMPORT-010 (`import.controller.spec.ts` — 512 KiB byte-accurate bound) | ✅ |
+| ADVISOR-AC-001 | T-ADVISOR-001 (`analyze.spec.ts` — clean pipeline scores A; penalties and bands apply) | ✅ |
+| ADVISOR-AC-002 | T-ADVISOR-002 (`analyze.spec.ts` — `:latest` and untagged images are critical) | ✅ |
+| ADVISOR-AC-003 | T-ADVISOR-102 (`advisor/adversarial.spec.ts` — floating tags flagged, pinned ones not, `:latest` still critical) | ✅ |
+| ADVISOR-AC-004 | T-ADVISOR-101 (`advisor/adversarial.spec.ts` — per-step ids distinct; no two findings share an id) | ✅ |
+| ADVISOR-AC-005 | T-ADVISOR-005 (`analyze.spec.ts` — hardcoded secrets are critical) | ✅ |
+| ADVISOR-AC-006 | T-ADVISOR-006 (`analyze.spec.ts` — disabled vs missing test stage) | ✅ |
+| ADVISOR-AC-007 | T-ADVISOR-007 (`analyze.spec.ts` — docker-build without a build stage on TS) | ✅ |
+| ADVISOR-AC-008 | T-ADVISOR-008 (`analyze.spec.ts` — findings ordered critical → warning → info) | ✅ |
+| ADVISOR-AC-009 | T-ADVISOR-103 (`advisor/adversarial.spec.ts` — build-output assumption reported only when a build stage will run) | ✅ |
+| ADVISOR-AC-010 | T-ADVISOR-010 (`analyze.spec.ts` — every finding carries a non-empty fix) | ✅ |
+| STATE-AC-001 | T-STATE-001 (`store.spec.ts` — save/read/list/delete across instances) | ✅ |
+| STATE-AC-002 | T-STATE-002 (`store.spec.ts` — per-workspace namespacing) | ✅ |
+| STATE-AC-003 | T-STATE-003 (`store.spec.ts` — corrupt file yields empty state) | ✅ |
+| STATE-AC-004 | T-STATE-004 (`store.spec.ts` — write failures never throw) | ✅ |
+| STATE-AC-005 | T-STATE-005 — autosave keyed by workspace-relative realpath | ☐ |
+| STATE-AC-006 | T-EDITOR-AUTOSAVE (`Editor.features.spec.tsx` — PUT on divergence, DELETE at baseline) | ✅ |
+| STATE-AC-007 | T-EDITOR-RESTORE (`Editor.features.spec.tsx` — restore offered, not imposed) | ✅ |
+| STATE-AC-008 | T-STATE-008 (`run-registry.spec.ts`) + T-STATE-008a (`store.spec.ts` — bounded history, running runs kept) | ✅ |
+| STATE-AC-009 | T-STATE-009 (`project-scan.spec.ts`, `path-security.spec.ts` — containment, no symlink following, bounds) | ✅ |
+| STATE-AC-010 | T-SEC-006 (`bounded-read.spec.ts` — oversized manifest degrades the entry, scan completes) | ✅ |
+| STATE-AC-011 | T-STATE-011 — share-link encoding via TextEncoder/base64url | ☐ |
+| STATE-AC-012 | T-SEC-010 (`Editor.provenance.spec.tsx` — link validated and held for review; fragment cleared) | ✅ |
+
 Legend: ✅ covered by passing tests, ◑ partially covered (Detector/Generator/
-Executor halves pending), ☐ pending the dependent spec, ⊘ superseded — the
+Executor halves pending), ☐ not yet covered, ⊘ superseded — the
 criterion no longer states a requirement and its replacement carries the
 coverage.
 

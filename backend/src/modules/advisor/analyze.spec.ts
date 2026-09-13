@@ -19,13 +19,13 @@ function ids(ir: PipelineIR): string[] {
 }
 
 describe('analyzePipeline', () => {
-  it('the canonical fixture scores an A with no critical findings', () => {
+  it('T-ADVISOR-001 (ADVISOR-AC-001) — the canonical fixture scores an A with no critical findings', () => {
     const d = analyzePipeline(loadIr());
     expect(d.grade).toBe('A');
     expect(d.findings.filter((f) => f.severity === 'critical')).toEqual([]);
   });
 
-  it('flags unpinned images as critical', () => {
+  it('T-ADVISOR-002 (ADVISOR-AC-002) — unpinned images are critical', () => {
     const ir = loadIr();
     ir.stages[0].container.image = 'node:latest';
     const d = analyzePipeline(ir);
@@ -33,7 +33,7 @@ describe('analyzePipeline', () => {
     expect(d.score).toBeLessThanOrEqual(75);
   });
 
-  it('flags runtime drift between stage image and project runtime', () => {
+  it('T-ADVISOR-009 (ADVISOR-FR-009) — runtime drift between stage image and project runtime', () => {
     const ir = loadIr();
     ir.stages = ir.stages.map((s) =>
       s.id === 'test' ? { ...s, container: { image: 'node:18-alpine' } } : s,
@@ -41,13 +41,13 @@ describe('analyzePipeline', () => {
     expect(ids(ir)).toContain('runtime-drift:test');
   });
 
-  it('flags a disabled install stage as critical (downstream will fail)', () => {
+  it('T-ADVISOR-004b (ADVISOR-FR-010) — a disabled install stage is critical', () => {
     const ir = loadIr();
     ir.stages = ir.stages.map((s) => (s.id === 'install' ? { ...s, enabled: false } : s));
     expect(ids(ir)).toContain('missing-install');
   });
 
-  it('flags disabled tests and non-frozen installs', () => {
+  it('T-ADVISOR-006 (ADVISOR-AC-006) — disabled tests and non-frozen installs', () => {
     const ir = loadIr();
     ir.stages = ir.stages.map((s) => (s.id === 'test' ? { ...s, enabled: false } : s));
     ir.stages = ir.stages.map((s) =>
@@ -60,7 +60,7 @@ describe('analyzePipeline', () => {
     expect(found).toContain('unfrozen-install:install:install-deps');
   });
 
-  it('flags hardcoded secrets as critical', () => {
+  it('T-ADVISOR-005 (ADVISOR-AC-005) — hardcoded secrets are critical', () => {
     const ir = loadIr();
     ir.stages[0].steps[0].env = { NPM_TOKEN: 'npm_abc123' };
     const d = analyzePipeline(ir);
@@ -68,13 +68,13 @@ describe('analyzePipeline', () => {
     expect(finding?.severity).toBe('critical');
   });
 
-  it('warns when docker-build runs without a build stage on a TS project', () => {
+  it('T-ADVISOR-007 (ADVISOR-AC-007) — docker-build without a build stage on a TS project', () => {
     const ir = loadIr();
     ir.stages = ir.stages.map((s) => (s.id === 'build' ? { ...s, enabled: false } : s));
     expect(ids(ir)).toContain('docker-build-without-build');
   });
 
-  it('orders findings critical → warning → info', () => {
+  it('T-ADVISOR-008 (ADVISOR-AC-008) — findings ordered critical → warning → info', () => {
     const ir = loadIr();
     ir.stages[0].container.image = 'node:latest'; // critical
     ir.stages = ir.stages.map((s) => (s.id === 'test' ? { ...s, enabled: false } : s)); // warning

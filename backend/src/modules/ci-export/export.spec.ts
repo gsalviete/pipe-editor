@@ -17,7 +17,7 @@ function loadIr(): PipelineIR {
 }
 
 describe('generateGithubActions', () => {
-  it('emits a parseable workflow with one shared-workspace job + docker-build job', () => {
+  it('T-CIEXPORT-001 (CIEXPORT-AC-001) — parseable workflow: one shared-workspace job + docker-build job', () => {
     const { filename, content } = generateGithubActions(loadIr());
     expect(filename).toBe('.github/workflows/ci.yml');
 
@@ -40,7 +40,7 @@ describe('generateGithubActions', () => {
     expect(doc.jobs['docker-build'].steps[1].run).toContain('docker build');
   });
 
-  it('disabled stages are spliced out (effective chain, not document order)', () => {
+  it('T-CIEXPORT-003 (CIEXPORT-AC-003) — disabled stages spliced out (effective chain, not document order)', () => {
     const ir = loadIr();
     ir.stages = ir.stages.map((s) => (s.id === 'lint' ? { ...s, enabled: false } : s));
     const { content } = generateGithubActions(ir);
@@ -48,7 +48,7 @@ describe('generateGithubActions', () => {
     expect(content).toContain('pnpm test');
   });
 
-  it('pnpm project WITHOUT corepack in its commands gets a dedicated corepack step; npm never does', () => {
+  it('T-CIEXPORT-015 (CIEXPORT-AC-015) — corepack enabled exactly once; npm never gets a step', () => {
     const ir = loadIr();
     ir.stages = ir.stages.map((s) =>
       s.id === 'install'
@@ -66,7 +66,7 @@ describe('generateGithubActions', () => {
     expect(generateGithubActions(ir).content).not.toContain('corepack');
   });
 
-  it('all-disabled chain produces an honest noop workflow', () => {
+  it('T-CIEXPORT-014a (CIEXPORT-AC-014) — all-disabled chain produces an honest noop workflow', () => {
     const ir = loadIr();
     ir.stages = ir.stages.map((s) => ({ ...s, enabled: false }));
     const { content } = generateGithubActions(ir);
@@ -75,7 +75,7 @@ describe('generateGithubActions', () => {
     expect(() => yamlLoad(content)).not.toThrow();
   });
 
-  it('IR triggers override the default branch list', () => {
+  it('T-CIEXPORT-016 (CIEXPORT-FR-015) — IR triggers override the default branch list', () => {
     const ir = loadIr();
     ir.triggers = [{ kind: 'on-push', branches: ['main', 'develop'] }];
     const doc = yamlLoad(generateGithubActions(ir).content) as any;
@@ -85,7 +85,7 @@ describe('generateGithubActions', () => {
 });
 
 describe('generateGitlabCi', () => {
-  it('emits parseable config: per-stage jobs, per-job images, lockfile-keyed cache', () => {
+  it('T-CIEXPORT-002 (CIEXPORT-AC-002) — per-stage jobs, per-job images, lockfile-keyed cache', () => {
     const { filename, content } = generateGitlabCi(loadIr());
     expect(filename).toBe('.gitlab-ci.yml');
 
@@ -104,7 +104,7 @@ describe('generateGitlabCi', () => {
     expect(doc['docker-build'].services).toEqual(['docker:25-dind']);
   });
 
-  it('GEN-05 — honours an edited docker-build image, and says it needs a privileged runner', () => {
+  it('T-CIEXPORT-012 (CIEXPORT-AC-012) — docker-build image comes from the IR; privileged runner declared', () => {
     const ir = loadIr();
     ir.stages = ir.stages.map((s) =>
       s.id === 'docker-build' ? { ...s, container: { image: 'docker:28' } } : s,
@@ -118,13 +118,13 @@ describe('generateGitlabCi', () => {
     expect(content).toMatch(/privileged/i);
   });
 
-  it('GEN-05 — falls back to docker:dind for a reference with no tag to extend', () => {
+  it('T-CIEXPORT-012b (CIEXPORT-AC-012) — docker:dind fallback for a reference with no tag', () => {
     expect(dindServiceFor('docker')).toBe('docker:dind');
     expect(dindServiceFor('docker@sha256:' + 'a'.repeat(64))).toBe('docker:dind');
     expect(dindServiceFor('registry.test/docker:25')).toBe('registry.test/docker:25-dind');
   });
 
-  it('keeps per-stage images (unlike the single-job GitHub layout)', () => {
+  it('T-CIEXPORT-013 (CIEXPORT-AC-013) — GitLab keeps per-stage images; GitHub notes the divergence', () => {
     const ir = loadIr();
     ir.stages = ir.stages.map((s) =>
       s.id === 'test' ? { ...s, container: { image: 'node:22-alpine' } } : s,
@@ -132,9 +132,17 @@ describe('generateGitlabCi', () => {
     const doc = yamlLoad(generateGitlabCi(ir).content) as any;
     expect(doc.test.image).toBe('node:22-alpine');
     expect(doc.install.image).toBe('node:20-alpine');
+
+    // GitHub cannot honour it — one shared workspace needs one container —
+    // so the divergence is reported in the header instead of being dropped.
+    const gha = generateGithubActions(ir);
+    expect(gha.content).toMatch(/NOTE: stage "test" declared image node:22-alpine/);
+    expect(gha.content).toMatch(/node:20-alpine so they share one workspace/);
+    const ghaDoc = yamlLoad(gha.content) as any;
+    expect(Object.keys(ghaDoc.jobs).sort()).toEqual(['docker-build', 'pipeline']);
   });
 
-  it('all-disabled chain produces an honest noop job', () => {
+  it('T-CIEXPORT-014b (CIEXPORT-AC-014) — all-disabled chain produces an honest noop job', () => {
     const ir = loadIr();
     ir.stages = ir.stages.map((s) => ({ ...s, enabled: false }));
     const doc = yamlLoad(generateGitlabCi(ir).content) as any;

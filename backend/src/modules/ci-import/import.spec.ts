@@ -69,7 +69,7 @@ lint:
 `;
 
 describe('importGithubActions', () => {
-  it('converts jobs → stages, run steps → steps, skips actions with warnings, infers project', () => {
+  it('T-CIIMPORT-001 (CIIMPORT-AC-001/008) — jobs → stages, run → steps, actions skipped with warnings, project inferred', () => {
     const { ir, warnings } = importGithubActions(GHA_SAMPLE);
 
     expect(validate(ir)).toEqual([]);
@@ -94,7 +94,7 @@ describe('importGithubActions', () => {
     expect(messages).toContain('VM runner'); // no container → default image warning
   });
 
-  it('linearizes parallel jobs with a warning', () => {
+  it('T-CIIMPORT-005 (CIIMPORT-FR-005) — parallel jobs linearized with a warning', () => {
     const parallel = `
 jobs:
   a:
@@ -115,7 +115,7 @@ jobs:
 });
 
 describe('importGitlabCi', () => {
-  it('orders jobs by stages list, keeps per-job images, applies variables, skips templates', () => {
+  it('T-CIIMPORT-002 (CIIMPORT-AC-002) — jobs ordered by stages list, per-job images, variables applied', () => {
     const { ir, warnings } = importGitlabCi(GITLAB_SAMPLE);
 
     expect(validate(ir)).toEqual([]);
@@ -145,7 +145,7 @@ describe('round-trip with the exporters', () => {
     ) as PipelineIR;
   }
 
-  it('our GitHub Actions export re-imports as a valid IR with the same commands', () => {
+  it('T-CIIMPORT-009 (CIIMPORT-AC-009) — our GitHub export re-imports as a valid IR with the same commands', () => {
     const original = fixtureIr();
     const exported = generateGithubActions(original);
     const { ir } = importCiConfig(exported.content, 'auto');
@@ -173,7 +173,7 @@ describe('round-trip with the exporters', () => {
 });
 
 describe('mergeDetectedProjectFacts', () => {
-  it('fills only the gaps: imported values win, detector supplies the rest, unresolved shrinks', () => {
+  it('T-CIIMPORT-013 (CIIMPORT-FR-013) — merge fills only the gaps and shrinks unresolved', () => {
     const { ir: imported } = importGithubActions(GHA_SAMPLE); // pnpm/node 20/ts inferred; pm.version null
     const detected: PipelineIR = JSON.parse(
       readFileSync(

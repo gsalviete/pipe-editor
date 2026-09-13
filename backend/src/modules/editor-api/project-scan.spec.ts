@@ -63,7 +63,7 @@ describe('scanProjects', () => {
     expect(found[0]).toMatchObject({ path: '.', name: 'root-proj' });
   });
 
-  it('marks monorepo roots and never descends into node_modules or dot-dirs', () => {
+  it('T-STATE-009 (STATE-AC-009) — monorepo roots marked; never descends into node_modules or dot-dirs', () => {
     project('.', { name: 'mono', workspaces: ['packages/*'] });
     project('packages/lib', { name: 'lib' });
     project('node_modules/sneaky', { name: 'sneaky' });

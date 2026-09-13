@@ -106,3 +106,34 @@ describe('T-ADVISOR-103 (GEN-03) — the dist/ assumption is surfaced', () => {
     expect(findings.map((f) => f.id)).not.toContain('build-output-assumed');
   });
 });
+
+describe('T-ADVISOR-010 (ADVISOR-AC-010) — every finding is actionable', () => {
+  it('carries a non-empty fix, title and detail', () => {
+    // A pipeline deliberately wrong in several ways at once, so the
+    // assertion covers most of the rule set in one pass.
+    const { findings } = analyzePipeline(
+      ir([
+        stage('install', 'node:latest', ['npm install']),
+        stage('build', 'node:lts-alpine', ['npm run build'], ['install']),
+        {
+          ...stage('deploy', 'node:18-alpine', ['echo go'], ['build']),
+          steps: [
+            {
+              id: 'deploy-1',
+              run: 'a && b && c && d',
+              workingDir: '.',
+              env: { API_KEY: 'sk-live-abc' },
+            },
+          ],
+        },
+      ]),
+    );
+    expect(findings.length).toBeGreaterThan(4);
+    for (const finding of findings) {
+      expect(finding.fix.trim()).not.toBe('');
+      expect(finding.title.trim()).not.toBe('');
+      expect(finding.detail.trim()).not.toBe('');
+      expect(['critical', 'warning', 'info']).toContain(finding.severity);
+    }
+  });
+});
