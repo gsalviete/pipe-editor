@@ -119,7 +119,8 @@ its Acceptance Criteria section; this is the consolidated view.
 | EDITOR-AC-019 | T-EDITOR-019 (Export JSON = `serializeCanonical(workingIR)`, differs from loadedIR's) | ✅ |
 | EDITOR-AC-020 | T-EDITOR-020 (Export YAML round-trips via `yaml.load()` to `canonicalEquals` IR) | ✅ |
 | EDITOR-AC-021 | T-EDITOR-021 (connector active states match `computeEffectiveChain(workingIR)`) | ✅ |
-| EDITOR-AC-022 | T-EDITOR-022 (no add/delete/reorder/run-edit affordances present) | ✅ |
+| EDITOR-AC-022 | ~~T-EDITOR-022 (no add/delete/reorder/run-edit affordances present)~~ — **superseded 2026-09-13 by EDITOR-AC-043.** The criterion asserted the opposite of its own test and this row reported it ✅. See the visual-editor spec changelog. | ⊘ |
+| EDITOR-AC-043 | T-EDITOR-022 (add/delete/step-edit present, no reorder) + T-EDITOR-043 (`editable-surface.spec.ts` — chain stays linear and ids stay unique across every edit sequence) | ✅ |
 | EDITOR-AC-023 | T-EDITOR-023 (empty stages + PM-name unresolved → `unresolved-prompt--primary` on PM-name only) | ✅ |
 | EDITOR-AC-024 | T-EDITOR-024 (Loaded IR snapshot unchanged after toggling Stage.enabled) | ✅ |
 | EDITOR-AC-025 | T-EDITOR-025 + T-EDITOR-025b (`projectPath` "." resolving to workspace root itself is ALLOWED) | ✅ |
@@ -168,7 +169,17 @@ its Acceptance Criteria section; this is the consolidated view.
 | WORKSPACE-AC-012 | T-WORKSPACE-012 (`workspace-bundle.spec.ts`, `WorkspaceStudio.spec.tsx` — existing Compose tracking, collision-free naming and UI notice) | ✅ |
 
 Legend: ✅ covered by passing tests, ◑ partially covered (Detector/Generator/
-Executor halves pending), ☐ pending the dependent spec.
+Executor halves pending), ☐ pending the dependent spec, ⊘ superseded — the
+criterion no longer states a requirement and its replacement carries the
+coverage.
+
+**A ✅ next to a criterion means the test asserts what the criterion says.**
+The 2026-09-13 review found one row where it did not: `EDITOR-AC-022` said
+the editor exposed no add/delete/step-edit controls, its test asserted the
+opposite, and this table reported ✅. A passing test certifying a false
+statement is worse than a gap, because the gap is visible. When a criterion
+and its test disagree, the criterion is amended and the row is corrected in
+the same change — never the tick alone.
 
 **Vertical slice closed (2026-06-15).** T-DET-008 closes the loop:
 `generate(detect(fixture))` produces a Dockerfile + `.dockerignore` that

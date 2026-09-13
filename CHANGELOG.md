@@ -35,6 +35,13 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- `EDITOR-AC-022` asserted that the editor exposed no controls for editing a
+  step's command, adding a Stage or deleting one — the opposite of the shipped
+  code and of its own test — while the traceability table reported it covered.
+  The criterion and `EDITOR-UI-FR-013` are superseded by `EDITOR-UI-FR-020` and
+  `EDITOR-AC-043`, which describe the real surface and name the invariants every
+  edit preserves.
+
 - A local run now proves the Docker daemon can see the temporary workspace copy
   before any stage executes, and aborts with `DOCKER_WORKSPACE_NOT_VISIBLE`
   otherwise. A bind mount whose source does not exist on the host is created as

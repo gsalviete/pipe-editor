@@ -695,10 +695,50 @@ MUST NOT expose affordances for these operations.
   snapshot of `loadedIR` taken immediately after the API response
   MUST remain `canonicalEquals`-equal to `loadedIR` after any
   sequence of toggle and export interactions.
-- **EDITOR-UI-FR-013 — Out-of-scope affordances absent.** The
-  editor MUST NOT expose UI controls for editing `steps[].run`,
-  adding a Stage, deleting a Stage, or reordering Stages. (v1
-  non-goal — Decision D.)
+- **EDITOR-UI-FR-013 — ~~Out-of-scope affordances absent~~
+  (SUPERSEDED 2026-09-13 by EDITOR-UI-FR-020).** This requirement
+  read: *"The editor MUST NOT expose UI controls for editing
+  `steps[].run`, adding a Stage, deleting a Stage, or reordering
+  Stages."* Decision D's closed editable surface was opened during
+  productization and the requirement was never updated, so the spec
+  asserted the opposite of the shipped code — and of its own test.
+  Retained here, struck through, because specs are superseded and
+  never deleted. The surface that actually exists is
+  EDITOR-UI-FR-020; the one affordance still absent (reordering) is
+  stated there.
+- **EDITOR-UI-FR-020 — The editable surface (replaces FR-013).** The
+  editor exposes, and MUST keep valid, exactly these edits to the
+  Working IR:
+
+  | Affordance | Effect |
+  |---|---|
+  | Toggle a Stage | `enabled` flips (EDITOR-UI-FR-004). |
+  | Edit a Step's command | `steps[i].run` is replaced. |
+  | Edit a Stage's image | `container.image` is replaced. |
+  | Add a Stage | A new Stage is spliced into the chain after a chosen predecessor, or at the head. |
+  | Delete a Stage | The Stage is removed and its successor re-linked to its predecessor. |
+  | Edit trigger branches | `triggers[0].branches` is replaced, or the trigger is dropped when empty. |
+  | Resolve an unresolved field | EDITOR-UI-FR-018. |
+
+  **Reordering Stages remains absent.** Any other ordering is
+  reachable by deleting and re-adding, and a drag-to-reorder
+  affordance would need its own answer for what happens to a chain
+  mid-drag. It stays out of v1 deliberately, not by omission.
+
+  **Two invariants hold across every edit**, because the IR's
+  validator enforces them and an editor that can produce a document
+  failing `validate()` is a broken editor:
+  1. **The chain stays linear.** Insertion re-points the successor's
+     `dependsOn` at the new Stage; deletion re-points it at the
+     deleted Stage's predecessor (or empties it, when the head is
+     deleted). At no point does a Stage gain in-degree or out-degree
+     above one, and the document never holds an orphan.
+  2. **Stage ids stay unique.** A new Stage takes the first free id
+     in the `custom`, `custom-2`, `custom-3`… namespace.
+
+  These are the same splice semantics `computeEffectiveChain` applies
+  for disabled Stages, and deliberately so: disabling and deleting
+  differ only in permanence.
 - **EDITOR-UI-FR-014 — PM-null prompt emphasized when chain is
   empty.** When `workingIR.stages.length === 0` AND the Working IR
   contains an `unresolved` entry with `field === "/project/packageManager/name"`,
@@ -963,7 +1003,8 @@ Testing Library + Vitest). See
 | **EDITOR-AC-019** | "Export JSON" produces a string identical to `serializeCanonical(workingIR)`, where `workingIR` reflects all toggle changes since the last "Detect". Specifically: load fixture → toggle `lint.enabled = false` → "Export JSON" → assert the exported string equals `serializeCanonical(workingIR)` AND differs from `serializeCanonical(loadedIR)` at exactly the `lint.enabled` byte region. | T-EDITOR-019 |
 | **EDITOR-AC-020** | "Export YAML" produces a string whose `yaml.load()` parses back to a `canonicalEquals`-equal IR (round-trip against the Working IR, not the Loaded IR). | T-EDITOR-020 |
 | **EDITOR-AC-021** | The Editor's effective chain rendering reflects `computeEffectiveChain` on the Working IR exactly. Together with EDITOR-AC-015/016, this confirms no editor-side splice re-implementation. | T-EDITOR-021 |
-| **EDITOR-AC-022** | The Editor exposes no UI control for editing `steps[].run`, adding a Stage, deleting a Stage, or reordering Stages (negative test by absence: queries for these affordances return no DOM elements). | T-EDITOR-022 |
+| **EDITOR-AC-022** | ~~The Editor exposes no UI control for editing `steps[].run`, adding a Stage, deleting a Stage, or reordering Stages (negative test by absence).~~ **SUPERSEDED 2026-09-13 by EDITOR-AC-043.** The criterion asserted the opposite of the shipped code and of `T-EDITOR-022` itself, while the traceability table reported it ✅. Kept struck through per the never-delete lifecycle. | — (superseded) |
+| **EDITOR-AC-043** | **The editable surface is what EDITOR-UI-FR-020 says it is, and every edit leaves a valid IR.** Positively: "Add stage", a per-Stage delete control and a per-Step command editor are present after a detect; no reorder control is. Invariantly: after any sequence of add / delete / toggle / command-edit / image-edit operations, `validate(workingIR)` returns no errors — in particular the chain stays linear (in-degree and out-degree ≤ 1, one head, one tail, every Stage reachable) and Stage ids stay unique. Deleting the head re-roots the chain; deleting a middle Stage re-links its successor to its predecessor; adding at the head re-points the previous head. | T-EDITOR-022, T-EDITOR-043 |
 | **EDITOR-AC-023** | An empty `stages: []` IR with an `unresolved` entry at `/project/packageManager/name` (PM-null fixture) renders an empty chain area, AND the PM-name prompt is rendered with visual emphasis (a stable DOM hook the test can key off, e.g. CSS class `unresolved-prompt--primary` on the PM-name prompt only). All other `unresolved` entries are still rendered (per EDITOR-AC-017) but do NOT carry the emphasis hook. | T-EDITOR-023 |
 | **EDITOR-AC-024** | The Editor MUST NOT mutate any Stage field other than `enabled` in response to a toggle, AND MUST NOT mutate the Loaded IR at all. (Behavioral: snapshot `loadedIR` pre-toggle via `serializeCanonical`, toggle, snapshot `loadedIR` post-toggle via `serializeCanonical`, assert byte-equal. Toggling produces a NEW Working IR whose `serializeCanonical` differs from the Loaded IR's at exactly the toggled Stage's `enabled` field.) | T-EDITOR-024 |
 | **EDITOR-AC-025** | `projectPath` resolving to the workspace root itself (e.g. `"."` or `"./"` when `wsRoot` IS a project directory) is ALLOWED by the containment check: `realCandidate === wsRoot` returns 200 (with the IR, or with `422 NO_MANIFEST` if the workspace root has no manifest). It MUST NOT be rejected with 403. | T-EDITOR-025 |
@@ -1085,3 +1126,4 @@ craft is what we judge by eye.
 | 2026-09-13 | Amendment (stays Accepted), from adversarial review finding **UX-02**: the editor's Generate/Run gate was a hand-written two-field check (`packageManager.name`, `runtime.version`) while the backend blocked on **five** fields, so an IR missing `/project/packageManager/version`, `/project/runtime/name` or `/project/language` showed enabled buttons that failed with a 422 naming a field the UI never mentioned. Resolution: (a) new **EDITOR-UI-FR-017** requires every runnability-dependent affordance to derive its answer from `findUnrunnableReason` imported from `@modules/ir`, and forbids a frontend-local copy of the required-nullable field list. (b) EDITOR-UI-FR-015's parenthetical, which had hard-coded the two-field formulation and was the origin of the drift, now defers to FR-017. (c) New EDITOR-AC-036 locks the equality across all five fields. Total ACs: 36 (was 35). |
 | 2026-09-13 | Amendment (stays Accepted), from adversarial review finding **UX-01a** — the most severe finding in the report. The editor rendered `unresolved` entries as read-only text (EDITOR-UI-FR-007) and offered no way to set the fields they named. Combined with a detector that could only resolve the Node version from `engines.node`, an ordinary Node project detected into a pipeline whose Generate and Run actions were permanently disabled, with a prompt instructing the user to do something the interface did not permit; the only escapes were editing the target project's `package.json` or hand-editing an exported IR. Decision D's "closed editable surface" is hereby opened by exactly one affordance. New **EDITOR-UI-FR-018** specifies the in-place resolution control: a `<select>` for the three closed-value fields, a text input plus commit button for the two version fields, the commit routed through `resolveProjectField` so the value lands and the paired `unresolved` entry is dropped in a single new IR (never two edits, so null ⟺ unresolved never breaks mid-edit), rejection via the IR's own `normalizeProjectFieldValue` rather than a frontend copy, and resolution treated as an ordinary undoable edit. Stage images are explicitly NOT retagged on resolution — the Doctor reports the drift and the per-stage image control fixes it. EDITOR-AC-017's parenthetical, which recorded in-UI resolution as deferred (EDITOR-OQ-003), is updated to point at this amendment; OQ-EDITOR-003 is thereby resolved. New EDITOR-AC-037…039. Total ACs: 39 (was 36). Supporting IR change: `resolveProjectField` / `normalizeProjectFieldValue` / `majorFromVersionText` live in `@modules/ir` (IR-AC-026) so the detector and the editor share one rule. |
 | 2026-09-13 | Amendment (stays Accepted), from adversarial review finding **SEC-02**. Three paths load an IR the user did not author — a `#ir=` share link, a dropped or imported file, and CI text — and after loading, one click on ▶ Run posted that document to `/api/execute`, which runs its steps in a container with a copy of the project mounted read-write and network access. `validate()` was the only gate, and it is a schema gate: it certifies shape, not intent. Nothing marked an imported pipeline as untrusted, and the Run button was exactly as prominent as for a detected one; a share link loaded on mount without the user seeing anything first. New **EDITOR-UI-FR-019** introduces provenance (`detected | imported | shared`) and the command-review gate: a share link is decoded, validated and held while every `run` string is displayed verbatim, loading only on an explicit act; the first execution of any non-detected document requires an acknowledgement listing every command, reset whenever a different document is loaded; disabled stages are listed too, marked as outside the effective chain, because a disabled stage is one click from running. New EDITOR-AC-040…042. The pre-existing test that asserted a share link "loads the pipeline on mount" is superseded — that behaviour was the finding. Total ACs: 42 (was 39). |
+| 2026-09-13 | Amendment (stays Accepted), from adversarial review finding **SDD-02** — the sharpest process finding in the report. **EDITOR-UI-FR-013** and **EDITOR-AC-022** both stated that the editor exposes no control for editing a step's command, adding a Stage or deleting one. The editor has exposed all three since productization; `T-EDITOR-022` had already been rewritten to assert their *presence*, with a comment saying the criterion was superseded — but the criterion itself was never amended and `test-strategy.md` went on reporting `EDITOR-AC-022 | T-EDITOR-022 (no add/delete/reorder/run-edit affordances present) | ✅`. A reviewer trusting the traceability table was told the opposite of the truth, with a green tick next to it. That is worse than an untested criterion: it is a passing test certifying a false statement. Resolution: FR-013 and AC-022 are struck through in place (never deleted, per the specs/README lifecycle) and replaced by **EDITOR-UI-FR-020**, which tabulates the surface that actually exists, states that Stage reordering remains deliberately absent, and — the part the old text never had — names the two invariants every edit must preserve: the chain stays linear and Stage ids stay unique. New **EDITOR-AC-043** tests both halves, positively for presence and invariantly by running `validate()` after sequences of edits. The traceability row is corrected. Total ACs: 43 (was 42, with AC-022 retired). |
