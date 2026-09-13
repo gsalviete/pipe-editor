@@ -30,6 +30,13 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- A project that declares a package manager but has no lockfile now gets an
+  install command that can actually run. `packageManager: "pnpm@9"` with no
+  `pnpm-lock.yaml` used to produce `pnpm install --frozen-lockfile` and a
+  `COPY package.json pnpm-lock.yaml ./`, both of which fail by definition, and the
+  tool presented them as finished artifacts. Detection now warns, DR-007 emits a
+  resolving install, and the generated Dockerfile makes the lockfile copy optional.
+
 - The generated Dockerfile states, in the file, that it assumes the build writes
   to `dist/`, and the Pipeline Doctor reports the same assumption — the tool
   reads manifests only and cannot confirm where a build actually writes.

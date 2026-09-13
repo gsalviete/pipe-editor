@@ -9,8 +9,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy manifest and lockfile first so dependency installation caches
-# independently of source changes.
-COPY package.json package-lock.json ./
+# independently of source changes. The trailing `*` makes the lockfile
+# optional: without it, `docker build` fails outright on a project that
+# has not committed one (GEN-04).
+COPY package.json package-lock.json* ./
 
 # Install all dependencies (including dev) for the build.
 RUN npm ci
@@ -31,7 +33,7 @@ WORKDIR /app
 # here rather than `COPY --from=builder node_modules` and prune: a fresh
 # install is deterministic in one command, while prune semantics differ
 # subtly across package managers and versions.
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 
 # Copy build artifacts from the builder stage.

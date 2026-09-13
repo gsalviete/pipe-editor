@@ -20,6 +20,7 @@ import {
   RuleRegistrationError,
 } from './errors';
 import { emitOutcome } from './emit-outcome';
+import { hasLockfileFor } from './rules/dr-007-install';
 import { readManifests, Warning } from './manifests';
 import {
   ALLOWED_FIELD_TARGETS,
@@ -138,6 +139,23 @@ export class Detector {
       }
       stageEmitterById.set(stage.id, rule.id);
       stagesById.set(stage.id as CanonicalStageId, stage);
+    }
+
+    // GEN-04 — say so when the declared package manager has no lockfile.
+    // DR-005 resolves the manager from `packageManager` before consulting
+    // lockfiles, so this combination is reachable and used to yield a
+    // `--frozen-lockfile` install that cannot succeed. DR-007 now emits a
+    // resolving install instead; this warning explains why the artifact is
+    // not reproducible until a lockfile is committed.
+    const pmName = project.packageManager.name;
+    if (pmName !== null && !hasLockfileFor({ manifests, ir: { version: '0.1.0', project }, rootPath }, pmName)) {
+      warnings.push({
+        manifest: LOCKFILE_NAME_BY_PM[pmName],
+        message:
+          `The project declares ${pmName} but no ${LOCKFILE_NAME_BY_PM[pmName]} was found. ` +
+          'The install stage uses a resolving install instead of a frozen one, so dependency ' +
+          'versions can drift between runs. Commit a lockfile to make the pipeline reproducible.',
+      });
     }
 
     // Step 5 — install-dependency invariant (DET-FR-018).
@@ -282,3 +300,9 @@ function writeProjectField(
       return;
   }
 }
+
+const LOCKFILE_NAME_BY_PM: Record<'npm' | 'pnpm' | 'yarn', string> = {
+  npm: 'package-lock.json',
+  pnpm: 'pnpm-lock.yaml',
+  yarn: 'yarn.lock',
+};

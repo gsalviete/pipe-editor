@@ -10,7 +10,7 @@
 import { execSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { PipelineIR } from '../ir';
+import { PipelineIR, UnresolvedRequiredFieldError } from '../ir';
 import { generate, UnsupportedRuntimeError } from './index';
 
 const FIXTURES = join(__dirname, '..', '..', '..', '..', 'test', 'fixtures');
@@ -171,17 +171,17 @@ describe('Dockerfile Generator — generate(ir)', () => {
       const pnpm = generate(loadFixture('node-pnpm-nest-basic').ir).dockerfile;
       expect(pnpm).toMatch(/\nRUN pnpm install --frozen-lockfile\n/);
       expect(pnpm).toMatch(/\nRUN pnpm install --frozen-lockfile --prod\n/);
-      expect(pnpm).toMatch(/\nCOPY package\.json pnpm-lock\.yaml \.\/\n/);
+      expect(pnpm).toMatch(/\nCOPY package\.json pnpm-lock\.yaml\* \.\/\n/);
 
       const npm = generate(loadFixture('node-npm-nest-basic').ir).dockerfile;
       expect(npm).toMatch(/\nRUN npm ci\n/);
       expect(npm).toMatch(/\nRUN npm ci --omit=dev\n/);
-      expect(npm).toMatch(/\nCOPY package\.json package-lock\.json \.\/\n/);
+      expect(npm).toMatch(/\nCOPY package\.json package-lock\.json\* \.\/\n/);
 
       const yarn = generate(loadFixture('node-yarn-nest-basic').ir).dockerfile;
       expect(yarn).toMatch(/\nRUN yarn install --frozen-lockfile\n/);
       expect(yarn).toMatch(/\nRUN yarn install --frozen-lockfile --production\n/);
-      expect(yarn).toMatch(/\nCOPY package\.json yarn\.lock \.\/\n/);
+      expect(yarn).toMatch(/\nCOPY package\.json yarn\.lock\* \.\/\n/);
     });
   });
 
@@ -278,6 +278,38 @@ describe('Dockerfile Generator — generate(ir)', () => {
   // build are not consumed at all. Surfaced by the Visual Editor's
   // /api/generate empty-chain analysis (EDITOR-AC-029).
   // ───────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────
+  // T-DOCKER-014 (DOCKER-AC-014) — PM-null → UnresolvedRequiredFieldError
+  // via the shared findUnrunnableReason precheck (DOCKER-FR-015).
+  // ───────────────────────────────────────────────────────────────────────
+  it('T-DOCKER-014 (DOCKER-AC-014) — PM-null IR throws UnresolvedRequiredFieldError citing /project/packageManager/name', () => {
+    const base = JSON.parse(
+      readFileSync(
+        join(FIXTURES, 'node-pnpm-nest-basic', 'expected-ir.json'),
+        'utf-8',
+      ),
+    ) as PipelineIR;
+    base.project.packageManager.name = null;
+    base.unresolved = [
+      ...(base.unresolved ?? []),
+      {
+        field: '/project/packageManager/name',
+        reason: 'needs-user-input',
+        message: 'No lockfile or packageManager field present.',
+      },
+    ];
+    expect(() => generate(base)).toThrow(UnresolvedRequiredFieldError);
+    try {
+      generate(base);
+      throw new Error('should not reach');
+    } catch (err) {
+      expect(err).toBeInstanceOf(UnresolvedRequiredFieldError);
+      expect((err as UnresolvedRequiredFieldError).path).toBe(
+        '/project/packageManager/name',
+      );
+    }
+  });
+
   it('T-DOCKER-013 (DOCKER-AC-013) — every stage disabled collapses to single-stage "disabled" variant 1', () => {
     const base = JSON.parse(
       readFileSync(

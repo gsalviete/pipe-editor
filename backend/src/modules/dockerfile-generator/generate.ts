@@ -79,8 +79,9 @@ function renderMultiStage(ir: PipelineIR): string {
   const pm = ir.project.packageManager.name as PackageManagerName;
   const lockfile = lockfileFor(pm);
   const corepackLine = needsCorepack(pm) ? 'RUN corepack enable\n\n' : '';
-  const installFull = installCommand(pm, /* prodOnly */ false);
-  const installProd = installCommand(pm, /* prodOnly */ true);
+  const frozen = usesFrozenInstall(ir);
+  const installFull = installCommand(pm, /* prodOnly */ false, frozen);
+  const installProd = installCommand(pm, /* prodOnly */ true, frozen);
   const buildCmd = buildCommandFromStage(getBuildStage(ir));
   const cmd = conventionalCmd(ir);
 
@@ -102,8 +103,10 @@ function renderMultiStage(ir: PipelineIR): string {
     corepackComment +
     corepackLine +
     `# Copy manifest and lockfile first so dependency installation caches\n` +
-    `# independently of source changes.\n` +
-    `COPY package.json ${lockfile} ./\n` +
+    `# independently of source changes. The trailing \`*\` makes the lockfile\n` +
+    `# optional: without it, \`docker build\` fails outright on a project that\n` +
+    `# has not committed one (GEN-04).\n` +
+    `COPY package.json ${lockfile}* ./\n` +
     `\n` +
     `# Install all dependencies (including dev) for the build.\n` +
     `RUN ${installFull}\n` +
@@ -125,7 +128,7 @@ function renderMultiStage(ir: PipelineIR): string {
     `# here rather than \`COPY --from=builder node_modules\` and prune: a fresh\n` +
     `# install is deterministic in one command, while prune semantics differ\n` +
     `# subtly across package managers and versions.\n` +
-    `COPY package.json ${lockfile} ./\n` +
+    `COPY package.json ${lockfile}* ./\n` +
     `RUN ${installProd}\n` +
     `\n` +
     `# Copy build artifacts from the builder stage.\n` +
@@ -151,7 +154,7 @@ function renderSingleStage(ir: PipelineIR, mode: Exclude<BuildMode, 'multi-stage
   const pm = ir.project.packageManager.name as PackageManagerName;
   const lockfile = lockfileFor(pm);
   const corepackLine = needsCorepack(pm) ? 'RUN corepack enable\n\n' : '';
-  const installProd = installCommand(pm, /* prodOnly */ true);
+  const installProd = installCommand(pm, /* prodOnly */ true, usesFrozenInstall(ir));
   const cmd = conventionalCmd(ir);
 
   return (
@@ -163,7 +166,7 @@ function renderSingleStage(ir: PipelineIR, mode: Exclude<BuildMode, 'multi-stage
     `\n` +
     corepackLine +
     `# Install production-only dependencies.\n` +
-    `COPY package.json ${lockfile} ./\n` +
+    `COPY package.json ${lockfile}* ./\n` +
     `RUN ${installProd}\n` +
     `\n` +
     `# Copy the project source. The companion .dockerignore excludes\n` +
@@ -271,7 +274,47 @@ function needsCorepack(pm: PackageManagerName): boolean {
   return pm !== 'npm';
 }
 
-function installCommand(pm: PackageManagerName, prodOnly: boolean): string {
+/**
+ * Whether this IR's install stage froze against a lockfile.
+ *
+ * GEN-04 — the generator cannot see the filesystem, but the detector already
+ * decided this question when it emitted the install stage (DR-007), and the
+ * IR is the source of truth (ADR-0003). Reading the decision back beats
+ * re-deriving it from a table that cannot know whether a lockfile exists.
+ * An IR with no install stage keeps the frozen default: it is the correct
+ * command for the overwhelmingly common case, and a hand-built IR that
+ * dropped its install stage has said nothing either way.
+ */
+function usesFrozenInstall(ir: PipelineIR): boolean {
+  const install = ir.stages.find((s) => s.id === 'install');
+  if (install === undefined || install.steps.length === 0) return true;
+  const text = install.steps.map((s) => s.run).join('\n');
+  if (/\bnpm\s+ci\b|--frozen-lockfile|--immutable/.test(text)) return true;
+  return !/\b(npm|pnpm|yarn)\s+install\b/.test(text);
+}
+
+function installCommand(
+  pm: PackageManagerName,
+  prodOnly: boolean,
+  frozen = true,
+): string {
+  if (!frozen) {
+    // No lockfile to freeze against; `npm ci` and `--frozen-lockfile` abort
+    // outright in that state, so a resolving install is the only command
+    // that can run. The header says the build is not reproducible.
+    switch (pm) {
+      case 'npm':
+        return prodOnly ? 'npm install --omit=dev' : 'npm install';
+      case 'pnpm':
+        return prodOnly ? 'pnpm install --prod' : 'pnpm install';
+      case 'yarn':
+        return prodOnly ? 'yarn install --production' : 'yarn install';
+    }
+  }
+  return frozenInstallCommand(pm, prodOnly);
+}
+
+function frozenInstallCommand(pm: PackageManagerName, prodOnly: boolean): string {
   // Install table from the spec — the contents of the `RUN <install>` line.
   // For pnpm/yarn, a standalone `RUN corepack enable` precedes this in each
   // stage; the inline prefix would be redundant.

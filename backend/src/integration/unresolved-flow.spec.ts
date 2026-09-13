@@ -90,12 +90,50 @@ describe('T-FLOW-001 — a Node project that declares no version anywhere', () =
   });
 });
 
-describe('T-FLOW-002 — a declared package manager with no lockfile', () => {
+describe('T-FLOW-002 (GEN-04) — a declared package manager with no lockfile', () => {
+  function detectFull(fixture: string) {
+    return new Detector({ rules: ALL_RULES }).detect(join(FIXTURES, fixture));
+  }
+
   it('detects as pnpm from the packageManager field alone', () => {
     const ir = detect('node-pm-field-no-lockfile');
     expect(validate(ir)).toEqual([]);
     expect(ir.project.packageManager).toEqual({ name: 'pnpm', version: '9' });
     expect(findUnrunnableReason(ir)).toBeNull();
+  });
+
+  // The command used to be `pnpm install --frozen-lockfile`, which aborts
+  // outright when there is no lockfile — presented as a finished artifact.
+  it('emits a resolving install, not a frozen one', () => {
+    const ir = detect('node-pm-field-no-lockfile');
+    const install = ir.stages.find((s) => s.id === 'install');
+    expect(install?.steps[0].run).toBe('corepack enable && pnpm install');
+    expect(install?.steps[0].run).not.toContain('--frozen-lockfile');
+  });
+
+  it('warns that the pipeline is not reproducible without a lockfile', () => {
+    const { warnings } = detectFull('node-pm-field-no-lockfile');
+    const lockWarning = warnings.find((w) => w.manifest === 'pnpm-lock.yaml');
+    expect(lockWarning).toBeDefined();
+    expect(lockWarning!.message).toMatch(/no pnpm-lock\.yaml was found/i);
+    expect(lockWarning!.message).toMatch(/reproducible/i);
+  });
+
+  it('generates a Dockerfile that can actually build', () => {
+    const { dockerfile } = generate(detect('node-pm-field-no-lockfile'));
+    // The COPY tolerates the missing lockfile...
+    expect(dockerfile).toContain('COPY package.json pnpm-lock.yaml* ./');
+    // ...and the install does not demand one.
+    expect(dockerfile).not.toContain('--frozen-lockfile');
+    expect(dockerfile).toContain('RUN pnpm install');
+  });
+
+  it('still emits a frozen install when the lockfile is present', () => {
+    const ir = detect('node-pnpm-nest-basic');
+    const install = ir.stages.find((s) => s.id === 'install');
+    expect(install?.steps[0].run).toBe('corepack enable && pnpm install --frozen-lockfile');
+    expect(generate(ir).dockerfile).toContain('--frozen-lockfile');
+    expect(detectFull('node-pnpm-nest-basic').warnings).toEqual([]);
   });
 });
 

@@ -13,7 +13,7 @@ WORKDIR /app
 RUN corepack enable
 
 # Install production-only dependencies.
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml* ./
 RUN pnpm install --frozen-lockfile --prod
 
 # Copy the project source. The companion .dockerignore excludes

@@ -12,8 +12,10 @@ WORKDIR /app
 RUN corepack enable
 
 # Copy manifest and lockfile first so dependency installation caches
-# independently of source changes.
-COPY package.json pnpm-lock.yaml ./
+# independently of source changes. The trailing `*` makes the lockfile
+# optional: without it, `docker build` fails outright on a project that
+# has not committed one (GEN-04).
+COPY package.json pnpm-lock.yaml* ./
 
 # Install all dependencies (including dev) for the build.
 RUN pnpm install --frozen-lockfile
@@ -36,7 +38,7 @@ RUN corepack enable
 # here rather than `COPY --from=builder node_modules` and prune: a fresh
 # install is deterministic in one command, while prune semantics differ
 # subtly across package managers and versions.
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml* ./
 RUN pnpm install --frozen-lockfile --prod
 
 # Copy build artifacts from the builder stage.
