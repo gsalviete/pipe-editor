@@ -6,7 +6,7 @@
 // test/fixtures/node-pnpm-nest-basic/expected-ir.json.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { load as yamlLoad } from 'js-yaml';
 import { readFileSync } from 'fs';
@@ -61,14 +61,32 @@ describe('Visual Editor (T-EDITOR-012…024)', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────
-  // T-EDITOR-012 (EDITOR-AC-012) — initial render: input + Detect button,
+  // T-EDITOR-012 (EDITOR-AC-012) — initial render: folder input + clear actions,
   // no chain.
   // ───────────────────────────────────────────────────────────────────────
-  it('T-EDITOR-012 — initial render shows projectPath input and Detect button; no chain rendered', () => {
+  it('T-EDITOR-012 — initial render shows the folder input and open actions; no chain rendered', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const path = typeof url === 'string' ? url : url.toString();
+        if (path.endsWith('/api/projects')) {
+          return Response.json({ workspaceRoot: '/workspace', projects: [] });
+        }
+        if (path.endsWith('/api/state/pipelines')) {
+          return Response.json({ pipelines: {} });
+        }
+        throw new Error(`Unexpected fetch ${path}`);
+      }),
+    );
     render(<Editor />);
     expect(screen.getByLabelText('projectPath')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /detect/i })).toBeInTheDocument();
     expect(screen.queryByTestId('chain')).toBeNull();
+    expect(screen.getByText(/Your CI pipeline, made visible/i)).toBeInTheDocument();
+    expect(screen.getByText('Discover', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByText('Shape', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByText('Prove', { selector: 'strong' })).toBeInTheDocument();
+    await screen.findByText(/No projects found under the workspace root/i);
   });
 
   // ───────────────────────────────────────────────────────────────────────
@@ -164,6 +182,10 @@ describe('Visual Editor (T-EDITOR-012…024)', () => {
   // ───────────────────────────────────────────────────────────────────────
   it('T-EDITOR-017 — every unresolved entry is rendered with field + message', async () => {
     const ir = loadIr('node-pnpm-nest-basic');
+    // Null the committed value so the unresolved entry is consistent
+    // (the editor now ALSO surfaces validate() errors, so an entry
+    // contradicting a committed value would legitimately render twice).
+    ir.project.language = null;
     ir.unresolved = [
       {
         field: '/project/language',
@@ -174,9 +196,10 @@ describe('Visual Editor (T-EDITOR-012…024)', () => {
     mockDetectFetch(ir);
     render(<Editor />);
     await runDetect();
-    expect(screen.getByText('/project/language')).toBeInTheDocument();
+    const list = screen.getByTestId('unresolved-list');
+    expect(within(list).getByText('/project/language')).toBeInTheDocument();
     expect(
-      screen.getByText(/Language could not be inferred/i),
+      within(list).getByText(/Language could not be inferred/i),
     ).toBeInTheDocument();
   });
 
@@ -268,19 +291,20 @@ describe('Visual Editor (T-EDITOR-012…024)', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────
-  // T-EDITOR-022 (EDITOR-AC-022) — no out-of-scope affordances.
+  // T-EDITOR-022 (superseded) — the v1 "closed editable surface" is gone:
+  // the editor now supports step editing, stage insertion and stage
+  // deletion. This test pins the NEW surface: those affordances exist,
+  // while reordering (still unsupported) stays absent.
   // ───────────────────────────────────────────────────────────────────────
-  it('T-EDITOR-022 — no edit-run / add-stage / delete-stage / reorder controls present', async () => {
+  it('T-EDITOR-022 — editing affordances present (add/delete stage, step edit); no reorder controls', async () => {
     const ir = loadIr('node-pnpm-nest-basic');
     mockDetectFetch(ir);
     render(<Editor />);
     await runDetect();
-    expect(screen.queryByRole('button', { name: /add stage/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /delete stage/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /add stage/i })).toBeInTheDocument();
+    expect(screen.getByLabelText('Delete lint stage')).toBeInTheDocument();
+    expect(screen.getByLabelText('Edit install step 1')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /reorder/i })).toBeNull();
-    expect(
-      screen.queryByRole('textbox', { name: /run command/i }),
-    ).toBeNull();
   });
 
   // ───────────────────────────────────────────────────────────────────────
@@ -332,6 +356,60 @@ describe('Visual Editor (T-EDITOR-012…024)', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────
+  // T-EDITOR-035 (EDITOR-AC-035) — Effective-chain caption tracks the
+  // splice. Positive assertion of the "test's effective predecessor
+  // visually becomes install" claim from EDITOR-AC-015.
+  // ───────────────────────────────────────────────────────────────────────
+  it('T-EDITOR-035 — effective-chain caption shows full chain initially, splices out lint on toggle, restores on re-toggle', async () => {
+    const ir = loadIr('node-pnpm-nest-basic');
+    mockDetectFetch(ir);
+    render(<Editor />);
+    await runDetect();
+
+    const caption = screen.getByTestId('effective-chain-caption');
+    // Initial: full chain in order, lint between install and test.
+    expect(caption.textContent).toMatch(
+      /install\s*→\s*lint\s*→\s*test\s*→\s*build\s*→\s*docker-build/,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText('Toggle lint enabled'));
+
+    // After toggle: lint absent; install IMMEDIATELY followed by test.
+    const after = screen.getByTestId('effective-chain-caption');
+    expect(after.textContent).not.toMatch(/lint/);
+    expect(after.textContent).toMatch(
+      /install\s*→\s*test\s*→\s*build\s*→\s*docker-build/,
+    );
+
+    // Re-enable: caption returns to the original.
+    await user.click(screen.getByLabelText('Toggle lint enabled'));
+    expect(screen.getByTestId('effective-chain-caption').textContent).toMatch(
+      /install\s*→\s*lint\s*→\s*test\s*→\s*build\s*→\s*docker-build/,
+    );
+  });
+
+  it('T-EDITOR-035b — when every Stage is disabled the caption shows the empty-chain placeholder, not a Stage list', async () => {
+    const ir = loadIr('node-pnpm-nest-basic');
+    mockDetectFetch(ir);
+    render(<Editor />);
+    await runDetect();
+
+    const user = userEvent.setup();
+    for (const stageId of ['install', 'lint', 'test', 'build', 'docker-build']) {
+      await user.click(screen.getByLabelText(`Toggle ${stageId} enabled`));
+    }
+
+    const caption = screen.getByTestId('effective-chain-caption');
+    expect(caption.className).toMatch(/effective-chain-caption--empty/);
+    expect(caption.textContent).toMatch(/empty|nothing to run/i);
+    // None of the canonical Stage IDs may appear in the empty caption.
+    for (const stageId of ['install', 'lint', 'test', 'build', 'docker-build']) {
+      expect(caption.textContent).not.toMatch(new RegExp(`\\b${stageId}\\b`));
+    }
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
   // T-EDITOR-024 (EDITOR-AC-024) — Loaded IR remains byte-equal pre- and
   // post-toggle.
   // ───────────────────────────────────────────────────────────────────────
@@ -373,9 +451,9 @@ function captureNextDownload(): { content: () => Promise<string> } {
   }) as typeof URL.createObjectURL;
   // No-op revoke so the URL above doesn't throw.
   URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+  // jsdom treats anchor navigation as an unimplemented browser operation.
+  // The download contract is the Blob payload, so keep the synthetic click
+  // local and assert that payload without emitting a misleading test warning.
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
   return { content: () => done };
 }
-
-// Silence a vitest TS lint about unused `act` import. Keeping it in the
-// imports lets future tests use it without a lint hop.
-void act;

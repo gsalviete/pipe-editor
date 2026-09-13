@@ -137,6 +137,9 @@ its Acceptance Criteria section; this is the consolidated view.
 | EDITOR-AC-037 | T-EDITOR-037 (`Editor.resolve.spec.tsx` — version text input and package-manager select commit and clear the gate) | ✅ |
 | EDITOR-AC-038 | T-EDITOR-038 (`Editor.resolve.spec.tsx` — `lts/hydrogen` refused with role=alert, IR untouched) | ✅ |
 | EDITOR-AC-039 | T-EDITOR-039 (`Editor.resolve.spec.tsx` — undo restores the unresolved state) | ✅ |
+| EDITOR-AC-040 | T-SEC-010 (`Editor.provenance.spec.tsx` — share link lists its commands, does not load, discards cleanly, refuses an invalid document) | ✅ |
+| EDITOR-AC-041 | T-SEC-011 (`Editor.provenance.spec.tsx` — no POST /api/execute before acknowledgement; a detected pipeline shows no review step) | ✅ |
+| EDITOR-AC-042 | T-SEC-012 (`Editor.provenance.spec.tsx` — imported label present for a link, absent for a detection) | ✅ |
 | FLOW-AC-001 | T-FLOW-001 (`unresolved-flow.spec.ts` — `node-npm-no-engines` detect → refuse → resolve → generate → export) | ✅ |
 | FLOW-AC-002 | T-FLOW-002 (`unresolved-flow.spec.ts` — `node-pm-field-no-lockfile` detects as pnpm from the field alone) | ✅ |
 | FLOW-AC-003 | T-FLOW-003 (`unresolved-flow.spec.ts` — every fixture golden's install command matches its declared package manager) | ✅ |

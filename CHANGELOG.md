@@ -7,6 +7,11 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Added
 
+- Pipelines now carry their provenance (detected, imported or shared). A shared
+  link shows every command it contains and loads only when you say so, and the
+  first run of any pipeline you did not detect yourself requires acknowledging
+  the commands it will execute (EDITOR-UI-FR-019, EDITOR-AC-040…042).
+
 - Unresolved project fields are now resolvable in the editor: each prompt carries
   a control (a select for package manager, runtime and language; a text input for
   the two version fields) that commits the value and clears the prompt in one

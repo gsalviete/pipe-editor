@@ -41,8 +41,11 @@ import { WorkspaceStudio } from './WorkspaceStudio';
 import { recordRecent } from './recent-projects';
 import { download } from './ui';
 import { useUndoableIR } from './useUndoableIR';
+import { ShareLinkReview } from './CommandReview';
 import {
   hasUnresolvedRequiredField,
+  listPipelineCommands,
+  type IRProvenance,
   insertStageAfter,
   nextCustomStageId,
   removeStage,
@@ -583,6 +586,12 @@ export function Editor() {
   const [dropMessage, setDropMessage] = useState<string | null>(null);
   const [detectedPath, setDetectedPath] = useState<string | null>(null);
   const [importedFrom, setImportedFrom] = useState<string | null>(null);
+  // SEC-02 — where the current document came from. `detected` is the only
+  // provenance whose commands the user implicitly authored.
+  const [provenance, setProvenance] = useState<IRProvenance>('detected');
+  // A share link never loads on its own; it waits here until the user has
+  // seen its commands.
+  const [pendingShare, setPendingShare] = useState<PipelineIR | null>(null);
   const [loadedIR, setLoadedIR] = useState<PipelineIR | null>(null);
   const [warnings, setWarnings] = useState<Warning[]>([]);
   const [detectError, setDetectError] = useState<string | null>(null);
@@ -645,6 +654,7 @@ export function Editor() {
         setWarnings(res.warnings);
         setDetectedPath(path);
         setImportedFrom(null);
+        setProvenance('detected');
         setWorkspacePlan(null);
         setSaveState(null);
         recordRecent(path, res.ir.project.name);
@@ -701,13 +711,19 @@ export function Editor() {
   const loadIrIntoEditor = useCallback(
     (
       ir: PipelineIR,
-      opts: { source: string; warnings?: Warning[]; runnablePath?: string | null },
+      opts: {
+        source: string;
+        warnings?: Warning[];
+        runnablePath?: string | null;
+        provenance?: IRProvenance;
+      },
     ) => {
       setLoadedIR(Object.freeze(JSON.parse(JSON.stringify(ir))) as PipelineIR);
       reset(ir);
       setWarnings(opts.warnings ?? []);
       setDetectedPath(opts.runnablePath ?? null);
       setImportedFrom(opts.source);
+      setProvenance(opts.provenance ?? 'imported');
     },
     [reset],
   );
@@ -799,16 +815,27 @@ export function Editor() {
     [loadIrIntoEditor],
   );
 
-  // Share links: #ir=<base64(canonical JSON)> loads on mount.
+  // Share links: #ir=<base64(canonical JSON)>.
+  //
+  // SEC-02 — a link is the least deliberate of the three import paths: it
+  // can be sent to someone and opened without any act of importing. It
+  // therefore never loads on its own. The document is decoded, validated
+  // and held; the user sees every command it carries and decides.
   useEffect(() => {
     const hash = window.location.hash;
     if (!hash.startsWith('#ir=')) return;
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
     try {
-      void loadExternalIR(decodeShareHash(hash.slice(4)), 'shared link');
+      const parsed: unknown = JSON.parse(decodeShareHash(hash.slice(4)));
+      const errors = validate(parsed);
+      if (errors.length > 0) {
+        setDetectError('The shared link does not contain a valid pipeline.');
+        return;
+      }
+      setPendingShare(parsed as PipelineIR);
     } catch {
       setDetectError('The shared link is corrupted and could not be decoded.');
     }
-    window.history.replaceState(null, '', window.location.pathname + window.location.search);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1027,6 +1054,8 @@ export function Editor() {
     setWarnings([]);
     setDetectedPath(null);
     setImportedFrom(null);
+    setProvenance('detected');
+    setPendingShare(null);
     setDetectError(null);
     setWorkspacePlan(null);
   }
@@ -1256,6 +1285,20 @@ export function Editor() {
         />
       )}
 
+      {pendingShare !== null && (
+        <ShareLinkReview
+          commands={listPipelineCommands(pendingShare)}
+          onLoad={() => {
+            loadIrIntoEditor(pendingShare, {
+              source: 'a shared link',
+              provenance: 'shared',
+            });
+            setPendingShare(null);
+          }}
+          onDiscard={() => setPendingShare(null)}
+        />
+      )}
+
       {(detectLoading || workspaceLoading) && workingIR === null && workspacePlan === null && (
         <div className="editor__loading" role="status">
           <span className="spinner" aria-hidden="true" />{' '}
@@ -1459,6 +1502,8 @@ export function Editor() {
               workingIR={workingIR}
               irValid={irValid}
               blockingUnresolved={blockingUnresolved}
+              provenance={provenance}
+              provenanceLabel={importedFrom}
             />
           ) : (
             <div className="editor__hint editor__hint--block">

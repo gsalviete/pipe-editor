@@ -2,7 +2,12 @@
 // a NEW PipelineIR. The Loaded IR (the snapshot returned by
 // /api/detect) is never touched; undo/redo snapshots rely on this.
 
-import { findUnrunnableReason, type PipelineIR, type Stage } from '@modules/ir';
+import {
+  computeEffectiveChain,
+  findUnrunnableReason,
+  type PipelineIR,
+  type Stage,
+} from '@modules/ir';
 
 export function toggleStageEnabled(ir: PipelineIR, stageId: string): PipelineIR {
   return {
@@ -131,4 +136,49 @@ export function removeStage(ir: PipelineIR, stageId: string): PipelineIR {
           : s,
       ),
   };
+}
+
+/**
+ * Where a Pipeline IR came from (SEC-02).
+ *
+ * `detected` is the only provenance the user implicitly authored: the
+ * commands were derived from their own project's manifests by rules in
+ * this repository. The other two arrived from outside — a file, a
+ * clipboard, a URL — and `validate()` says nothing about what their
+ * commands DO. Running one is running someone else's shell script.
+ */
+export type IRProvenance = 'detected' | 'imported' | 'shared';
+
+export interface PipelineCommand {
+  stageId: string;
+  stageName: string;
+  stepId: string;
+  run: string;
+  /** False for stages spliced out of the effective chain. */
+  willRun: boolean;
+}
+
+/**
+ * Every command in the document, in document order, flagged with whether
+ * it is actually in the effective chain.
+ *
+ * Disabled stages are listed too: the point of the review is to show the
+ * user everything the document carries, and a disabled stage is one click
+ * from running.
+ */
+export function listPipelineCommands(ir: PipelineIR): PipelineCommand[] {
+  const effective = new Set(computeEffectiveChain(ir).map((s) => s.id));
+  const commands: PipelineCommand[] = [];
+  for (const stage of ir.stages) {
+    for (const step of stage.steps) {
+      commands.push({
+        stageId: stage.id,
+        stageName: stage.name,
+        stepId: step.id,
+        run: step.run,
+        willRun: effective.has(stage.id),
+      });
+    }
+  }
+  return commands;
 }

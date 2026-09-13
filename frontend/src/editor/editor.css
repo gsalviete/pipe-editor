@@ -1382,3 +1382,82 @@
 .onboarding > .btn {
   align-self: flex-end;
 }
+
+/* SEC-02 — the command-review gate for a pipeline the user did not author. */
+.command-review {
+  border: 2px solid var(--warn);
+  background: var(--warn-bg);
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin: 12px 0;
+}
+.command-review--blocking {
+  margin: 24px auto;
+  max-width: 62rem;
+}
+.command-review h2,
+.command-review h3 {
+  margin: 0 0 8px;
+  color: var(--warn);
+  font-size: 16px;
+}
+.command-review p {
+  margin: 0 0 12px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.command-review__list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+.command-review__item {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.command-review__item--skipped {
+  opacity: 0.6;
+}
+.command-review__stage {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.command-review__run {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.command-review__skipped-tag {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.command-review__empty {
+  color: var(--muted);
+  font-style: italic;
+}
+.command-review__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.run-panel__hint--untrusted {
+  color: var(--warn);
+  font-weight: 500;
+}

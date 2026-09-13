@@ -800,6 +800,39 @@ MUST NOT expose affordances for these operations.
   findings are what surface the mismatch, and the per-stage image
   control is what fixes it.
 
+- **EDITOR-UI-FR-019 — Provenance and the command-review gate.** The
+  editor MUST track where the current Pipeline IR came from, as one of
+  `detected | imported | shared`, and MUST treat the two non-detected
+  provenances as untrusted input.
+
+  `detected` is the only provenance whose commands the user implicitly
+  authored: they were derived from that user's own manifests by the
+  Detection Rules in this repository. An `imported` or `shared` document
+  arrived from a file, a clipboard or a URL, and `validate()` is a
+  **schema** gate — it certifies the document's shape and says nothing
+  about what its commands do. Running one is running someone else's shell
+  script in a container with a copy of the user's project mounted
+  read-write and network access.
+
+  1. **A share link never loads on its own.** A `#ir=` fragment MUST be
+     decoded and validated but NOT loaded into the editor. The editor MUST
+     first render every `run` string the document contains — the actual
+     text, not a count — and load only on an explicit action. The fragment
+     is stripped from the URL either way. A link is the least deliberate of
+     the three paths: it can be sent to someone and opened without any act
+     of importing.
+  2. **The first run of a non-detected pipeline is confirmed.** Before the
+     first `POST /api/execute` for an `imported` or `shared` document, the
+     editor MUST list every command and require an explicit acknowledgement.
+     Once acknowledged, that document stays acknowledged; loading a
+     different document MUST reset the acknowledgement.
+  3. **Disabled stages are listed too.** The review shows the whole
+     document, marking which commands are outside the effective chain. A
+     disabled stage is one click from running.
+  4. **Provenance is visible.** A non-detected document MUST be labelled as
+     such wherever the pipeline is identified, and the run affordance MUST
+     say a review is outstanding.
+
 ### UI non-functional requirements
 
 - **EDITOR-UI-NFR-001 — Library-agnostic rendering.** The spec
@@ -948,6 +981,9 @@ Testing Library + Vitest). See
 | **EDITOR-AC-037** | **An unresolved required field can be resolved in the UI.** For an IR whose only unresolved entry is `/project/runtime/version`, the editor renders a control labelled "Node version"; entering `20` and committing MUST (a) remove that prompt, (b) show `node 20` in the project badges, and (c) clear the Generate/Run gate hint. For an IR whose only unresolved entry is `/project/packageManager/name`, the editor renders a `<select>` labelled "Package manager" offering exactly `npm`, `pnpm`, `yarn`; choosing one commits it and removes the prompt. A full semver (`v20.11.0`) commits as the major (`20`). | T-EDITOR-037 |
 | **EDITOR-AC-038** | **A value that does not normalize is refused, not written.** Committing `lts/hydrogen` into `/project/runtime/version` MUST leave the IR unchanged: the prompt stays, the gate stays on, and an element with `role="alert"` names the rejected input. | T-EDITOR-038 |
 | **EDITOR-AC-039** | **Resolution is undoable.** After resolving a field, Undo MUST restore the unresolved state — the prompt returns and the Generate/Run gate is on again — confirming resolution went through the same history as every other edit. | T-EDITOR-039 |
+| **EDITOR-AC-040** | **A share link is reviewed, not loaded.** Mounting with a `#ir=` fragment MUST render a review (`data-testid="share-link-review"`) containing the verbatim text of every `run` in the document, and MUST NOT render the stage chain. The URL fragment is cleared regardless. Choosing to load renders the chain and labels the document as imported; discarding leaves the editor empty. A fragment that does not decode to a `validate()`-clean IR renders an error and no review. | T-SEC-010 |
+| **EDITOR-AC-041** | **The first run of a non-detected pipeline is confirmed.** For an `imported` or `shared` document, activating Run MUST render a confirmation listing every command instead of issuing `POST /api/execute`; the request is issued only after the acknowledgement. A `detected` document MUST NOT show the step. Loading a different document resets the acknowledgement. | T-SEC-011 |
+| **EDITOR-AC-042** | **Provenance is visible.** A document loaded from a link or a file carries a visible "imported from …" label; a detected one carries none. | T-SEC-012 |
 
 ## Testing approach
 
@@ -1048,3 +1084,4 @@ craft is what we judge by eye.
 | 2026-06-22 | Amendment (stays Accepted): EDITOR-AC-015's "test's effective predecessor visually becomes install" was satisfied only under a **loose reading** by the prior implementation — the inactive-connector styling encoded the splice but did not assert it positively (a naïve viewer could still read a line threading through the disabled Stage). Triage during the toggle-effect bug found this gap. Resolution: (a) new **EDITOR-UI-FR-016** mandates an explicit text caption listing the effective-chain Stage IDs in order, derived from the same `computeEffectiveChain(workingIR)` call the connectors use (one read, two consumers). (b) EDITOR-UI-FR-006 reworded to spell out the two-layer v1 signal (inactive connectors + caption). (c) EDITOR-AC-015 reworded to assert the splice POSITIVELY via the caption text — disabling lint MUST make the caption show `install → test → …`. (d) New EDITOR-AC-035 locks the caption's behavior across toggle/un-toggle. (e) A literal bypass connector that physically re-routes the line around disabled Stages is **explicitly deferred** to v0.2, recorded as OQ-EDITOR-005 with the rationale (the caption removes ambiguity in text without the layout-engine cost; the bypass line is UX polish). Total ACs: 35 (was 34). Contract is not reversing — the v1 guarantee is now stated unambiguously where it had been loosely interpretable. |
 | 2026-09-13 | Amendment (stays Accepted), from adversarial review finding **UX-02**: the editor's Generate/Run gate was a hand-written two-field check (`packageManager.name`, `runtime.version`) while the backend blocked on **five** fields, so an IR missing `/project/packageManager/version`, `/project/runtime/name` or `/project/language` showed enabled buttons that failed with a 422 naming a field the UI never mentioned. Resolution: (a) new **EDITOR-UI-FR-017** requires every runnability-dependent affordance to derive its answer from `findUnrunnableReason` imported from `@modules/ir`, and forbids a frontend-local copy of the required-nullable field list. (b) EDITOR-UI-FR-015's parenthetical, which had hard-coded the two-field formulation and was the origin of the drift, now defers to FR-017. (c) New EDITOR-AC-036 locks the equality across all five fields. Total ACs: 36 (was 35). |
 | 2026-09-13 | Amendment (stays Accepted), from adversarial review finding **UX-01a** — the most severe finding in the report. The editor rendered `unresolved` entries as read-only text (EDITOR-UI-FR-007) and offered no way to set the fields they named. Combined with a detector that could only resolve the Node version from `engines.node`, an ordinary Node project detected into a pipeline whose Generate and Run actions were permanently disabled, with a prompt instructing the user to do something the interface did not permit; the only escapes were editing the target project's `package.json` or hand-editing an exported IR. Decision D's "closed editable surface" is hereby opened by exactly one affordance. New **EDITOR-UI-FR-018** specifies the in-place resolution control: a `<select>` for the three closed-value fields, a text input plus commit button for the two version fields, the commit routed through `resolveProjectField` so the value lands and the paired `unresolved` entry is dropped in a single new IR (never two edits, so null ⟺ unresolved never breaks mid-edit), rejection via the IR's own `normalizeProjectFieldValue` rather than a frontend copy, and resolution treated as an ordinary undoable edit. Stage images are explicitly NOT retagged on resolution — the Doctor reports the drift and the per-stage image control fixes it. EDITOR-AC-017's parenthetical, which recorded in-UI resolution as deferred (EDITOR-OQ-003), is updated to point at this amendment; OQ-EDITOR-003 is thereby resolved. New EDITOR-AC-037…039. Total ACs: 39 (was 36). Supporting IR change: `resolveProjectField` / `normalizeProjectFieldValue` / `majorFromVersionText` live in `@modules/ir` (IR-AC-026) so the detector and the editor share one rule. |
+| 2026-09-13 | Amendment (stays Accepted), from adversarial review finding **SEC-02**. Three paths load an IR the user did not author — a `#ir=` share link, a dropped or imported file, and CI text — and after loading, one click on ▶ Run posted that document to `/api/execute`, which runs its steps in a container with a copy of the project mounted read-write and network access. `validate()` was the only gate, and it is a schema gate: it certifies shape, not intent. Nothing marked an imported pipeline as untrusted, and the Run button was exactly as prominent as for a detected one; a share link loaded on mount without the user seeing anything first. New **EDITOR-UI-FR-019** introduces provenance (`detected | imported | shared`) and the command-review gate: a share link is decoded, validated and held while every `run` string is displayed verbatim, loading only on an explicit act; the first execution of any non-detected document requires an acknowledgement listing every command, reset whenever a different document is loaded; disabled stages are listed too, marked as outside the effective chain, because a disabled stage is one click from running. New EDITOR-AC-040…042. The pre-existing test that asserted a share link "loads the pipeline on mount" is superseded — that behaviour was the finding. Total ACs: 42 (was 39). |
