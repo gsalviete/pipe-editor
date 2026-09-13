@@ -253,7 +253,12 @@ function renderGithubActions(name: string, services: WorkspaceService[]): string
       lines.push(`      - name: ${yamlScalar(`${service.name} · ${stage.name}`)}`);
       lines.push(`        working-directory: ${yamlScalar(service.path)}`);
       lines.push('        run: |');
-      for (const step of stage.steps) lines.push(`          ${step.run}`);
+      // GEN-07 — every LINE of every step is indented, not just the first.
+      // A multi-line step.run used to de-indent its continuation lines and
+      // break the block scalar; the bundle's own YAML re-parse would then
+      // fail the whole generation with an obscure message, turning a data
+      // problem into a hard error.
+      lines.push(...blockScalarLines(stage.steps.map((step) => step.run), 10));
     }
     lines.push(`      - name: ${yamlScalar(`${service.name} · Docker build`)}`);
     lines.push(`        working-directory: ${yamlScalar(service.path)}`);
@@ -276,7 +281,9 @@ function renderGitlabCi(name: string, services: WorkspaceService[]): string {
     const stages = verificationStages(service);
     lines.push(`${service.id}-verify:`);
     lines.push('  stage: verify');
-    lines.push(`  image: ${stages[0]?.container.image ?? `node:${service.ir.project.runtime.version}-alpine`}`);
+    lines.push(
+      `  image: ${yamlScalar(stages[0]?.container.image ?? `node:${service.ir.project.runtime.version}-alpine`)}`,
+    );
     lines.push('  script:');
     lines.push(`    - cd ${shellQuote(service.path)}`);
     for (const stage of stages) {
@@ -427,6 +434,25 @@ function commonDockerignore(excludeDist: boolean): string {
 
 function yamlScalar(value: string): string {
   return JSON.stringify(value);
+}
+
+/**
+ * The body lines of a YAML literal block scalar, each indented.
+ *
+ * Multi-line commands are the point: a block scalar ends at the first line
+ * indented less than its body, so a command's second line at column zero
+ * silently terminates the block and becomes a sibling key. Blank lines are
+ * emitted empty rather than as trailing whitespace.
+ */
+function blockScalarLines(runs: string[], indent: number): string[] {
+  const pad = ' '.repeat(indent);
+  const out: string[] = [];
+  for (const run of runs) {
+    for (const line of run.split('\n')) {
+      out.push(line.trim() === '' ? '' : `${pad}${line}`);
+    }
+  }
+  return out;
 }
 
 function shellQuote(value: string): string {

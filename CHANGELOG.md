@@ -30,6 +30,11 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- The workspace bundle's GitHub Actions file indents every line of a multi-line
+  command, instead of only the first. A command containing newlines used to
+  de-indent its continuation lines, break the block scalar and fail the bundle's
+  own YAML re-check with an obscure message.
+
 - A project that declares a package manager but has no lockfile now gets an
   install command that can actually run. `packageManager: "pnpm@9"` with no
   `pnpm-lock.yaml` used to produce `pnpm install --frozen-lockfile` and a
