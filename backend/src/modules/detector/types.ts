@@ -11,7 +11,9 @@ export type ManifestPath =
   | 'package-lock.json'
   | 'yarn.lock'
   | 'nest-cli.json'
-  | 'tsconfig.json';
+  | 'tsconfig.json'
+  | '.nvmrc'
+  | '.node-version';
 
 export const ENUMERATED_MANIFEST_SET: readonly ManifestPath[] = [
   'package.json',
@@ -20,6 +22,17 @@ export const ENUMERATED_MANIFEST_SET: readonly ManifestPath[] = [
   'yarn.lock',
   'nest-cli.json',
   'tsconfig.json',
+  '.nvmrc',
+  '.node-version',
+] as const;
+
+// Manifests that are *evidence* but not proof that this folder is a project.
+// A directory holding only a `.nvmrc` is not a Node project, so these do not
+// satisfy the "at least one manifest" precondition that guards NoManifestError
+// (DET-FR-020). See DR-004 in docs/rules/detection-rules.md.
+export const NON_QUALIFYING_MANIFESTS: readonly ManifestPath[] = [
+  '.nvmrc',
+  '.node-version',
 ] as const;
 
 export interface PackageJson {
@@ -28,6 +41,7 @@ export interface PackageJson {
   type?: string;
   packageManager?: string;
   engines?: { node?: string; [k: string]: string | undefined };
+  volta?: { node?: string; [k: string]: string | undefined };
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -47,6 +61,9 @@ export interface ParsedManifests {
   'yarn.lock'?: { __present: true };
   'nest-cli.json'?: Record<string, unknown>;
   'tsconfig.json'?: TsConfigJson;
+  // Plain-text version files: the first non-empty, non-comment line, trimmed.
+  '.nvmrc'?: { raw: string };
+  '.node-version'?: { raw: string };
 }
 
 // What rules see: only the manifests the rule declared in `reads`.

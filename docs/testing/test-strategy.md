@@ -93,6 +93,7 @@ its Acceptance Criteria section; this is the consolidated view.
 | DET-AC-017 | T-DET-017 × 2 (`package.json` hard-throw; `tsconfig.json` warn-and-continue) | ✅ |
 | DET-AC-018 | T-DET-018 (orphan command-Stage drop, `docker-build` preserved) | ✅ |
 | DET-AC-019 | T-DET-019 (stage rule reads `ctx.ir.project.runtime.version` per pass-ordering guarantee) | ✅ |
+| DET-AC-020 | T-DET-020 (`dr-004-runtime-version.spec.ts` — engines/volta/.nvmrc/.node-version order, alias rejection, image propagation, lone version file is not a manifest) | ✅ |
 | EDITOR-AC-001 | T-EDITOR-001 (`workspace-root.spec.ts` — refusal on unset/invalid `PIPE_EDITOR_WORKSPACE_ROOT`) | ✅ |
 | EDITOR-AC-002 | T-EDITOR-002 (`detect.controller.spec.ts` — fixture regression-lock through HTTP) | ✅ |
 | EDITOR-AC-003 | T-EDITOR-003 (`path-security.spec.ts` + HTTP: contained/display-root absolute accepted; outside absolute → 403) | ✅ |

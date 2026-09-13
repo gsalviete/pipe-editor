@@ -25,6 +25,11 @@ All notable changes to Pipe Editor are documented here. The project follows
 
 ### Fixed
 
+- Detection now resolves the Node version from `volta.node`, `.nvmrc` and
+  `.node-version` as well as `engines.node`, so a project that pins its version
+  the ordinary way no longer detects to a pipeline that can never be generated or
+  run (DR-004, DET-AC-020, ADR-0011).
+
 - The editor's Generate/Run gate now derives from `findUnrunnableReason`
   (`@modules/ir`) instead of a local two-field check, so the UI no longer enables
   actions the API refuses with a 422 naming a field the interface never showed

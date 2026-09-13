@@ -9,6 +9,20 @@ export function extractMajor(version: string): string {
   return m === null ? version : m[1];
 }
 
+/**
+ * Major version from a free-text version pin, or null when the text names
+ * no concrete version. Unlike `extractMajor` this REJECTS input that does
+ * not start with a version-ish token, so nvm aliases (`lts/hydrogen`,
+ * `node`, `stable`) become "no evidence" rather than a bogus version that
+ * would be interpolated straight into a `node:<v>-alpine` image tag.
+ */
+export function majorFromVersionText(raw: string): string | null {
+  const trimmed = raw.trim();
+  // Strip a leading range operator or `v` prefix, then require digits.
+  const m = trimmed.match(/^(?:[>=<~^]=?|v)?\s*(\d+)(?:[.\-+a-zA-Z0-9]*)?$/);
+  return m === null ? null : m[1];
+}
+
 export function isNonEmptyString(v: unknown): v is string {
   return typeof v === 'string' && v.length > 0;
 }
