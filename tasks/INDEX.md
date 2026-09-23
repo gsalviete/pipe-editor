@@ -1,0 +1,45 @@
+# Tasks
+
+- TASK-001 · [DOC] Amend specs for filesystem containment (Phase 1) · in-progress (parked)
+- TASK-002 · [FIX] Make the visibility marker symlink-safe (AR-01) · todo
+- TASK-003 · [FIX] Add a contained, bounded regular-file reader (AR-02, AR-03) · todo
+- TASK-004 · [FIX] Contain CI-file reads in discovery and import (AR-02, AR-03) · todo
+- TASK-005 · [FIX] Restore the frontend production image build (AR-04) · todo
+- TASK-006 · [DOC] Amend specs for session identity and durable state (Phase 2) · todo
+- TASK-007 · [FIX] Validate persisted state and use prototype-safe keys (AR-23) · todo
+- TASK-008 · [FIX] Report state write failures instead of acknowledging (AR-07) · todo
+- TASK-009 · [FIX] Persist provenance with saved pipelines (AR-28) · todo
+- TASK-010 · [FIX] Serialize autosave and show honest save state (AR-07, AR-08) · todo
+- TASK-011 · [FIX] Guard editor responses with a document session (AR-05, AR-23) · todo
+- TASK-012 · [FIX] Restore provenance and bind review to the document (AR-28) · todo
+- TASK-013 · [FIX] Reset studio on rescan; drop stale bundles (AR-06, AR-09) · todo
+- TASK-014 · [DOC] Amend specs for validation and execution agreement (Phase 3) · todo
+- TASK-015 · [FIX] Complete runtime validation of IR fields (AR-30, AR-10) · todo
+- TASK-016 · [FIX] Bound validation work on aliased or cyclic input (AR-24) · todo
+- TASK-017 · [FIX] Return stable envelopes for malformed boundary input (AR-30) · todo
+- TASK-018 · [FIX] Render generated metadata as literal text (AR-10) · todo
+- TASK-019 · [FIX] Encode multi-line scripts safely in Dockerfiles (AR-11) · todo
+- TASK-020 · [FIX] Canonical run/export order; refuse empty runs (AR-13, AR-14) · todo
+- TASK-021 · [FIX] Keep per-step env and directory in execution (AR-12) · todo
+- TASK-022 · [FIX] Keep per-step context in GitHub and GitLab exports (AR-12) · todo
+- TASK-023 · [FIX] Keep per-step context in Dockerfile builds (AR-12) · todo
+- TASK-024 · [DOC] Amend specs for operational exports and import (Phase 4) · todo
+- TASK-025 · [DX] Add offline provider-schema validation to tests · todo
+- TASK-026 · [FIX] Namespace GitLab jobs and honor trigger branches (AR-15, AR-16) · todo
+- TASK-027 · [FIX] Hand GitLab outputs through artifacts, not cache (AR-17) · todo
+- TASK-028 · [FIX] Bring workspace CI to parity with single export (AR-18) · todo
+- TASK-029 · [FIX] Generate a Vite Dockerfile that works without a lockfile (AR-19) · todo
+- TASK-030 · [FIX] Consistent Vite port; loopback-only ports (AR-20, AR-32) · todo
+- TASK-031 · [FIX] Import conditional GitHub work as disabled (AR-21) · todo
+- TASK-032 · [FIX] Match GitLab before_script precedence on import (AR-21) · todo
+- TASK-033 · [FIX] Prefer explicit runtime evidence over fallback images (AR-22) · todo
+- TASK-034 · [DOC] Amend specs for bounded, recoverable execution (Phase 5) · todo
+- TASK-035 · [FIX] Cap active runs and slow SSE subscribers (AR-25) · todo
+- TASK-036 · [FIX] Budget workspace copies; remove interrupted ones (AR-25, AR-26) · todo
+- TASK-037 · [FIX] Await confirmed container removal on abort (AR-26) · todo
+- TASK-038 · [FIX] Probe daemon readiness and allow re-check (AR-27) · todo
+- TASK-039 · [FIX] Recover lost run streams without duplicated output (AR-27) · todo
+- TASK-040 · [DOC] Amend test strategy and dependency policy (Phase 6) · todo
+- TASK-041 · [DX] Triage dependency advisories and upgrade safely (AR-29) · todo
+- TASK-042 · [DX] Fix test boundaries that overstate guarantees (AR-31) · todo
+- TASK-043 · [DOC] Rewrite REPORT.md from measured gates (AR-31) · todo
