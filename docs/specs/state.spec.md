@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Component | `STATE` |
-| Status | Implemented |
+| Status | Implemented · amendment **Draft** (Hardening v2 Phase 1, 2026-09-23) — STATE-FR-017/018, STATE-AC-013…017 await acceptance |
 | Written on | 2026-09-13 |
 | Authored | **Retroactively** — see [Provenance](#provenance) |
 | Architecture | [`ADR-0008`](../adr/0008-workspace-root-containment-for-detect-endpoint.md), [`ADR-0016`](../adr/0016-local-state-persistence-and-share-links.md) |
@@ -127,6 +127,32 @@ not.
   format's security properties are the editor's to enforce, and that the
   fragment is stripped from the URL either way.
 
+- **STATE-FR-017 — Contained regular-file reads.** *(Draft — Hardening v2
+  Phase 1, AR-02 / AR-03; tightens STATE-FR-012.)* Every read of a file whose
+  name comes from a user's project (manifests during discovery, and the
+  readers that DET-FR-020, WORKSPACE-FR-014 and PRODUCT-FR-013 point here)
+  MUST use the contained read defined in
+  [ADR-0019](../adr/0019-filesystem-boundary-reads-and-writes.md) § 1.
+  - The **boundary is the project directory** being read (ADR-0019 § 2). A
+    symlink that resolves inside it is followed. One that resolves outside it
+    is refused.
+  - The file is opened **non-blocking** and without following a final link,
+    and the **open descriptor** must be a regular file whose identity matches
+    the contained resolved path. FIFOs, devices, sockets and directories are
+    refused **without blocking**.
+  - The byte budget is enforced on bytes actually read through the
+    descriptor, never on `stat` size alone.
+  - A refused file degrades exactly as STATE-FR-012 describes for an
+    oversized one: the project is still listed under its directory name, and
+    the refusal becomes a diagnostic.
+  - A refusal in one project never stops the scan of its siblings.
+
+- **STATE-FR-018 — The CI-config inventory is contained.** *(Draft —
+  Hardening v2 Phase 1, AR-02.)* Listing a project's CI configs applies
+  STATE-FR-010 to `.github` and `.github/workflows`: a symlinked directory at
+  either position is not listed through. Only entries that STATE-FR-017 would
+  accept as readable are reported.
+
 ## Non-functional requirements
 
 - **STATE-NFR-001 — State is a convenience, never a source of truth.** The
@@ -157,6 +183,11 @@ not.
 | **STATE-AC-010** | An oversized `package.json` leaves the project listed under its directory name with no scripts, and the scan completes. | T-SEC-006 (`bounded-read.spec.ts`) |
 | **STATE-AC-011** | `encodeShareHash`/`decodeShareHash` round-trip a document containing non-ASCII text without corruption, using `TextEncoder`/base64url. | T-STATE-011 (`share-link.spec.ts`) |
 | **STATE-AC-012** | A share link is validated and held for review rather than loaded, and the fragment is cleared from the URL. | T-SEC-010 (`Editor.provenance.spec.tsx`) |
+| **STATE-AC-013** *(Draft)* | A project whose `package.json` is a symlink to a file **outside the project directory** (a sentinel containing `"name":"OUTSIDE"`) is listed under its directory name; no scan result contains `OUTSIDE`, and the project carries a containment diagnostic. Inverts review probe R02. | T-STATE-013 (TASK-003) |
+| **STATE-AC-014** *(Draft)* | A symlink at a manifest name that resolves **inside the project directory** is followed and read normally. | T-STATE-014 (TASK-003) |
+| **STATE-AC-015** *(Draft)* | A FIFO named `package.json` in one project and a healthy sibling project: a scan run in a child process with a 1-second deadline completes before the deadline, lists the sibling with its real name, and gives the FIFO project a special-file diagnostic. The same holds for a directory named `package.json`. Inverts review probe L03. | T-STATE-015 (TASK-003) |
+| **STATE-AC-016** *(Draft)* | A manifest whose bytes exceed the budget while being read (its `stat` size under the budget) is refused as oversized; at most `budget + 1` bytes are read. | T-STATE-016 (TASK-003) |
+| **STATE-AC-017** *(Draft)* | A project whose `.github/workflows` (or `.github`) is a symlink to a directory outside the project reports `ciConfigs: []`. | T-STATE-017 (TASK-004) |
 
 ## Testing approach
 
@@ -171,3 +202,4 @@ autosave and restore, `share-link.spec.ts` for the encoding,
 | Date | Change |
 |---|---|
 | 2026-09-13 | Retroactive spec written from the shipped code (adversarial review **SDD-01**), covering four capabilities that had none: the state store, the run registry's persistence, share links, and the discovery routes. Writing it produced three requirements the code did not meet, each fixed in the same session: **STATE-FR-005** (autosave keyed by the raw client string, so one project had up to four saves depending on how the path was typed — **ARCH-05**), **STATE-FR-012** (manifest reads unbounded — **SEC-06**), and **STATE-FR-015** (share links encoded with the deprecated `escape`/`unescape` pair — **FE-04**). **STATE-FR-014**'s "fragment, never a query parameter" and **STATE-FR-016**'s trust boundary were already true of the code but had never been written down as requirements, which is how a later change would have quietly broken them. The persistence location and the link format are argued in [ADR-0016](../adr/0016-local-state-persistence-and-share-links.md). |
+| 2026-09-23 | **Amendment — Draft** (Hardening v2 Phase 1, `tasks/TASK-001`), from the second adversarial review's **AR-02** and **AR-03**. STATE-FR-012 bounded the *size* of manifest reads but still decided on a path and read whatever it named: a file symlink could expose a manifest outside the workspace (R02), and a FIFO at a manifest name blocked the event loop because `stat` reports size 0 and the open blocks (L03). New **STATE-FR-017** points every project-file read at the contained, non-blocking, descriptor-checked, byte-budgeted read of [ADR-0019](../adr/0019-filesystem-boundary-reads-and-writes.md), with the **project directory** as its boundary; **STATE-FR-018** applies STATE-FR-010 to the CI-config inventory. New **STATE-AC-013…017**. STATE-FR-012 stays; FR-017 tightens it. Status stays Implemented for the existing criteria; the new ones are Draft until accepted. |
