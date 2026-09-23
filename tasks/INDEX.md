@@ -1,6 +1,6 @@
 # Tasks
 
-- TASK-001 · [DOC] Amend specs for filesystem containment (Phase 1) · in-progress (parked)
+- TASK-001 · [DOC] Amend specs for filesystem containment (Phase 1) · done
 - TASK-002 · [FIX] Make the visibility marker symlink-safe (AR-01) · todo
 - TASK-003 · [FIX] Add a contained, bounded regular-file reader (AR-02, AR-03) · todo
 - TASK-004 · [FIX] Contain CI-file reads in discovery and import (AR-02, AR-03) · todo
