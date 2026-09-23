@@ -61,6 +61,14 @@ with a real consumer* before the expensive components are built.
 Update the **Status** column as specs progress. This table is the project's
 at-a-glance progress board.
 
+> **Pending amendments — Hardening v2 Phase 1 (Draft, 2026-09-23).**
+> `STATE`, `DET`, `WORKSPACE`, `PRODUCT` and `EXEC` carry Draft amendments
+> from the second adversarial review (AR-01 to AR-04), argued in
+> [ADR-0019](../adr/0019-filesystem-boundary-reads-and-writes.md). Each
+> spec's existing criteria stay Implemented, and the new ones are Draft
+> until the owner accepts them. See each spec's Status field and changelog,
+> and [`06-hardening-v2.md`](../product/06-hardening-v2.md).
+
 ### Companion documents
 
 | Document | Purpose | Status |
