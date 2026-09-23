@@ -1,692 +1,407 @@
-# Pipe Editor — Adversarial Review
+# Pipe Editor — adversarial review, second pass
 
 | Field | Value |
 |---|---|
-| Document type | Critique / review report (not a spec, not normative) |
-| Written on | 2026-09-13 |
-| Scope | Whole repository: backend, frontend, generated artifacts, infrastructure, docs and process |
-| Baseline | `main` @ `e3a9b42e` + working-tree changes; `pnpm test` green (242 backend, 48 frontend) |
-| Companion | [`system-overview.md`](./system-overview.md) — what the code does, without judgement |
+| Date | 2026-09-22 |
+| Reviewed revision | `fae6a98b6daaec0fc0112b6979d44dd1ca17ff32` |
+| Scope | First-party backend, frontend, generators, imports, execution, persistence, configuration, CI, tests, fixtures, and the claims in `REPORT.md` |
+| Deliverable | Review and reproducible evidence; **no application fixes applied** |
+| Existing files | The pre-existing, untracked `REPORT.md` and historical reports were preserved |
+| Priority | P1: fix before relying on the affected workflow; P2: next hardening iteration; P3: follow-up |
 
-**Stance.** This report assumes the code is wrong until proven otherwise and
-attacks it from four directions: a hostile input, a real-world project that does
-not look like the fixtures, a reviewer reading the generated artifacts, and the
-project's own governing rule in `CLAUDE.md`. Every finding cites evidence.
-Severity is about *impact on the product's claims*, not about how hard the fix is.
+**Verdict: the project has useful foundations, but its current “hardened / all gates green / nothing blocks the product” assessment is too strong.** This pass reproduced an out-of-copy host-file overwrite, a workspace containment bypass, a blocked discovery process, a broken production Docker build, cross-project restoration, stale persistence, and invalid or misleading generated artifacts. Passing the existing examples does not establish safety at these boundaries.
 
----
+This is a local, single-user tool. Findings involving hostile repositories require the user to select or scan such a repository; execution findings additionally require starting a run. This review does **not** claim an unauthenticated internet-facing host takeover. Arbitrary pipeline commands are an intentional capability; the bugs below concern unintended file access, changes of meaning, misleading success, and missing lifecycle boundaries.
 
-## 0. What holds up
+## 1. Verification and coverage
 
-Stated first, because the rest of this document is deliberately negative and the
-baseline is genuinely strong.
+### Measured gates
 
-- The IR really is provider-neutral and really is the single source of truth: a
-  recursive forbidden-key walk enforces it, and `computeEffectiveChain` /
-  `findUnrunnableReason` are imported by every consumer instead of being
-  re-implemented. That discipline is rare and it shows.
-- The filesystem boundary is well built: lexical check *before* `realpath` (so
-  outside paths 403 rather than leaking existence through 404), symlink
-  resolution on the whole path, the root itself explicitly allowed, discovery that
-  refuses to follow directory symlinks, and every path-taking endpoint funnelled
-  through the same function.
-- The executor's security posture is correct by construction: temp copy, one
-  container per stage, constructed environment (no host inheritance), no
-  `--privileged`, no `--network host`, no socket mount, cidfile-based abort,
-  bounded output with a visible truncation marker.
-- The Docker-backed executor tests actually run containers in the suite. Most
-  projects with this shape mock that away.
-- The workspace bundle re-validates its own output (YAML parses, Dockerfile has
-  `FROM`/`CMD`, no publish/deploy command, existing Compose files untouched)
-  before returning it.
-- The honesty discipline in the copy ("same commands in containers, not
-  byte-for-byte parity") is maintained consistently, including in ADR-0001.
-
-Now the problems.
-
----
-
-## 1. Top five
-
-| # | Finding | Why it is first |
-|---|---|---|
-| 1 | [UX-01] Unresolved fields are a dead end | The product's headline actions (Generate, Run) are permanently disabled for any project without `engines.node`, and the UI offers no way to fix it. This is most real projects. |
-| 2 | [SDD-01/02] Shipped code with no spec, and a spec that contradicts its own test | The project's entire thesis is spec-driven development. Two CI generators, the importer, the Doctor and the state store have no spec; `EDITOR-AC-022` now asserts the opposite of what the code does, while the traceability table reports it ✅. |
-| 3 | [GEN-01/02] Unescaped interpolation into generated Dockerfiles and YAML | The output is the deliverable. Today a scoped package name or a stage renamed with a `:` silently produces a broken or semantically different artifact, with no parse-back check on the single-service export path. |
-| 4 | [SEC-01/02] Untrusted IR → one-click container execution, on an unauthenticated loopback API | A share link or a dropped file is enough to stage arbitrary commands; nothing defends against DNS rebinding into `127.0.0.1:3000`. |
-| 5 | [IMP-01] GHA multi-line `run:` blocks joined with ` && ` | Import silently changes the meaning of very common workflows — a `#` comment line swallows the rest of the block. |
-
----
-
-## 2. Security
-
-### SEC-01 — No Host-header / DNS-rebinding defence — **High**
-
-`main.ts` binds loopback, sets a narrow CORS origin and stops there. CORS is not
-a defence against DNS rebinding: a page on `evil.test` whose DNS flips to
-`127.0.0.1` becomes *same-origin* with the API and can read the responses of
-`GET /api/projects` and `GET /api/directories` (a map of the user's source tree),
-`POST /api/detect` (manifest contents), `POST /api/import/from-project` (file
-contents), and can start `POST /api/execute` runs.
-
-The product is marketed as local-first and single-user, which makes this the
-threat model that *does* apply.
-
-**Fix.** Reject any request whose `Host` is not `127.0.0.1[:port]`/`localhost`
-(or the configured Compose host) in a global middleware, and reject
-`Sec-Fetch-Site: cross-site` on state-changing routes. Both are a few lines and
-neither breaks the Vite proxy.
-
-### SEC-02 — Untrusted IR becomes executable with one click — **High**
-
-Three paths load an IR the user did not author: `#ir=<base64>` share links
-(`Editor.tsx:695-706`), dropped/imported JSON-YAML files (`loadExternalIR`), and
-CI text sent to `/api/import`. After loading, `RunPanel`'s **▶ Run pipeline** posts
-that IR to `/api/execute`, which runs `sh -c "<steps joined with &&>"` in a
-container with a copy of the project mounted read-write and network access.
-
-`validate()` is a *schema* gate; it says nothing about what the commands do. The
-UI does display the commands, but nothing marks an imported pipeline as
-untrusted, and the Run button is equally prominent for detected and imported
-pipelines.
-
-**Fix.** Taint IRs by provenance (`detected | imported | shared`). For tainted
-IRs require an explicit "I reviewed these commands" confirmation listing every
-`run` string before the first execution, and never auto-load a share link without
-showing the command list first.
-
-### SEC-03 — Unvalidated `container.image` is interpolated into the docker argv — **Medium**
-
-```ts
-// backend/src/modules/executor/docker-client.ts:68-82
-const argv = ['run','--rm',`--cidfile=${cidFile}`,'-w',req.workingDir,'-v',`${req.workspaceHostPath}:/workspace`];
-for (const [k,v] of Object.entries(req.env)) argv.push('-e', `${k}=${v}`);
-argv.push(req.image, 'sh', '-c', req.shellCommand);
-```
-
-`validate()` only requires `container.image` to be a *string*. A value starting
-with `-` is consumed by the Docker CLI as another option, shifting the image slot
-to `sh`. In practice that limits escalation (the `sh` image will not resolve), so
-this is argument injection with a low ceiling rather than a container escape —
-but it is a client-controlled value landing in the option region of a
-privilege-bearing CLI, and the ceiling depends on Docker's parser, not on us.
-
-**Fix.** Validate the image against a reference regex
-(`^[a-z0-9][a-z0-9._\/-]*(:[\w.\-]+)?(@sha256:[a-f0-9]{64})?$`) in `validate()`
-so every consumer benefits, and keep argv construction ordered so no user value
-can precede the image.
-
-### SEC-04 — Environment keys and values are never constrained — **Medium**
-
-`step.env` is validated only as "an object" (`validate.ts:247`). Values flow into
-`-e KEY=VALUE` (executor), into `env:` blocks in the GitHub Actions export
-(`github-actions.ts:70`) and into `variables:` in GitLab (`gitlab-ci.ts:60`) with
-the **key unquoted**. A key containing `:` or a leading `-` produces invalid or
-re-interpreted YAML; a value containing a newline breaks the single-quoted scalar.
-
-**Fix.** Constrain keys to `^[A-Za-z_][A-Za-z0-9_]*$` in `validate()`; emit YAML
-through a serializer (see GEN-02).
-
-### SEC-05 — The exec Compose override can report a green run that validated nothing — **Medium**
-
-`docker-compose.exec.yml`'s own header admits the temp copy lives inside the
-backend container and is not visible to the host daemon. What it does not say is
-what Docker *does* in that situation: `-v /tmp/pipe-editor-exec-xxx/workspace:/workspace`
-with a source path that does not exist on the host **creates an empty directory**
-and mounts it. The stage then runs against an empty workspace. Depending on the
-commands, that yields a confusing failure — or, for a tolerant script, a
-**passing** run that verified nothing. That directly contradicts the ADR-0001
-fidelity claim the whole product rests on.
-
-**Fix.** Before the first stage, write a marker file into the temp copy and
-assert from inside a throwaway container that it is visible; abort the run with a
-clear `DOCKER_WORKSPACE_NOT_VISIBLE` error otherwise. Alternatively wire the
-shared host temp dir the ADR defers, and until then make the override refuse to
-start runs rather than "best-effort" them.
-
-### SEC-06 — Unbounded manifest reads — **Low/Medium**
-
-`readManifests` (`manifests.ts:37`), `probeProject` (`project-scan.ts:211`) and
-`inspectWorkspace` (`inspect.ts:40`) read `package.json`/lockfiles with no size
-check. A multi-hundred-megabyte file anywhere in the workspace (a vendored
-artifact, a hostile repo the user cloned to inspect) turns a discovery scan into
-an OOM. The CI-import path *does* have a 512 KiB bound; manifests do not.
-
-**Fix.** `statSync().size` gate (e.g. 2 MiB) with a warning, mirroring the import
-limit.
-
-### SEC-07 — Unbounded recursion on client JSON — **Low**
-
-`validateForbiddenKeys` (`validate.ts:50`) recurses over the whole document with
-no depth limit, and `deepSortKeys` (`canonical.ts:76`) does the same. Express
-accepts 1 MB bodies, which is enough for ~10⁵ nesting levels. Verified on this
-machine's Node: `JSON.parse` handles a 200 000-deep object without complaint (V8
-parses iteratively), and an equivalent recursive walk then throws
-`RangeError: Maximum call stack size exceeded` — i.e. body-parser does *not*
-shield the validator, and the failure surfaces as an opaque 500 rather than a 400.
-
-**Fix.** Depth cap (say 64) returning a validation error.
-
-### SEC-08 — `credentials: true` on CORS with no auth — **Low**
-
-`main.ts:35-38` allows credentials for an API that has no cookies, sessions or
-tokens. It widens what a permitted origin can do and buys nothing.
-
-### SEC-09 — SSE stream can leak — **Low**
-
-`ExecuteController.events` checks `registry.get(runId)` and then calls
-`subscribe()` (`execute.controller.ts:156-190`). If the run is evicted between
-the two, `subscribe` returns `undefined`, no terminal event ever arrives, and the
-response stays open emitting heartbeats until the client disconnects. Concurrent
-SSE subscribers are also unbounded.
-
----
-
-## 3. Generated artifacts (the actual deliverable)
-
-### GEN-01 — Unescaped `project.name` in Dockerfiles and in the docker-build command — **High**
-
-```ts
-// dockerfile-generator/generate.ts:92 and :174
-`# Source: project "${ir.project.name}" — runtime: …`
-// detector/rules/dr-011-docker-build.ts:24
-`docker build -t ${ctx.ir.project.name}:ci .`
-```
-
-`project.name` comes from `package.json` (or is edited client-side). Two concrete
-failures:
-
-1. **Scoped packages.** `@acme/api` → `docker build -t @acme/api:ci .` → an
-   invalid reference. Every exported CI file for every scoped package is broken,
-   and nothing in the pipeline notices — the workspace-bundle path slugs service
-   ids, the single-service path does not.
-2. **Injection.** A name containing a newline injects arbitrary lines into the
-   generated Dockerfile (`RUN curl …`); a name containing `;` or backticks
-   extends the docker-build shell command that is exported to CI and shown in
-   RunPanel's copy-paste reproduce command.
-
-**Fix.** One shared `dockerTagSlug()` used by DR-011 and the workspace path;
-strip control characters from anything interpolated into a comment.
-
-### GEN-02 — YAML built by string concatenation, with no parse-back check — **High**
-
-`ci-export/github-actions.ts` and `ci-export/gitlab-ci.ts` assemble YAML line by
-line. Failure modes reachable from the editor's own controls:
-
-| Input | Line | Result |
-|---|---|---|
-| Stage renamed `Build: prod` | `github-actions.ts:66` — `- name: ${stage.name}` | Invalid YAML (or a nested mapping). |
-| Multi-line `step.run` | `:72` `run: ${quote(...)}` | `quote()` returns a single-quoted scalar containing raw newlines — broken indentation, not a block scalar. |
-| Branch `*` or `release: x` | `:40` `branches: [${branches.join(', ')}]` | `*` is an alias indicator in flow context → parse error. |
-| Env key with `:` | `:70` | Invalid mapping. |
-
-The workspace-bundle path *does* re-parse everything it emits
-(`validateYamlArtifacts`), which makes the omission on the single-service export
-path an inconsistency as much as a bug.
-
-**Fix.** Build a JS object and `yaml.dump` it (use block scalars for multi-line
-`run`), or keep the hand-built text but (a) quote every interpolated scalar and
-(b) add the same parse-back assertion the workspace path already has — plus a
-golden test with hostile names.
-
-### GEN-03 — `dist/` is hardcoded as the build output — **Medium**
-
-`COPY --from=builder /app/dist ./dist` (`generate.ts:131`) and
-`CMD ["node","dist/main.js"]` (`conventionalCmd`) assume a NestJS-shaped layout.
-For a project that builds to `build/`, `out/`, `.output/` or nothing at all, the
-generated image is broken — and every check in the product still passes, because
-nothing ever builds it. `DOCKER-LIMIT-001` acknowledges the CMD convention, but
-the `COPY` assumption is not surfaced to the user at all.
-
-**Fix.** Either detect the output directory (tsconfig `outDir`, Vite default,
-NestJS default) into the IR, or emit an explicit, visible comment plus a Doctor
-finding: "the image copies `dist/`; confirm your build writes there."
-
-### GEN-04 — Generated Dockerfiles assume a lockfile that may not exist — **Medium**
-
-DR-005 resolves the package manager from the `packageManager` field **before**
-consulting lockfiles, so `packageManager: "pnpm@9"` with no `pnpm-lock.yaml`
-yields a Dockerfile with `COPY package.json pnpm-lock.yaml ./` and
-`RUN pnpm install --frozen-lockfile` — a guaranteed build failure that the tool
-presents as a finished artifact.
-
-**Fix.** Record lockfile presence during detection (a warning, or a nullable IR
-field behind a spec amendment) and have the generator either fall back to a
-non-frozen install with a loud comment or refuse with a clear message.
-
-### GEN-05 — GitLab export ignores the IR's docker-build image — **Medium**
-
-`gitlab-ci.ts:73-74` hardcodes `image: docker:27` and `services: [docker:27-dind]`
-while DR-011 put `docker:25` in the IR. The IR is supposed to be the source of
-truth (ADR-0003); here the generator overrules it, and it silently requires a
-privileged GitLab runner — a real deployment constraint the output never mentions.
-
-### GEN-06 — Multi-image chains are flattened silently-ish — **Low**
-
-`github-actions.ts:57-65` runs every stage in the *first* stage's image and
-leaves a comment. A user who deliberately gave `test` a different image gets a
-workflow that does not reproduce their local run; the comment is in the file, not
-in the UI.
-
-### GEN-07 — Workspace GHA block scalar breaks on multi-line commands — **Low**
-
-`workspace-bundle/generate.ts:254-255` emits `run: |` then each `step.run` at a
-fixed 10-space indent. A command containing newlines de-indents the continuation
-lines and breaks the block — the same class of bug as GEN-02, in the path that
-otherwise validates its YAML (the bundle would catch it as a failed check, which
-turns a data problem into a hard generation failure with an obscure message).
-
----
-
-## 4. CI import
-
-### IMP-01 — Multi-line `run:` blocks are joined with ` && ` — **High**
-
-```ts
-// ci-import/github-actions.ts:117
-const run = step.run.trim().split('\n').join(' && ');
-```
-
-GitHub's `run: |` blocks are shell scripts. Joining lines with `&&`:
-
-- **comments out the rest of the block** if any line starts with `#`
-  (`# install deps && npm ci` — everything after the `#` is a comment);
-- breaks any line that is not a complete command (loops, heredocs, `if` blocks,
-  line continuations);
-- changes failure semantics (a script runs under `set -e` per line; `&&` chains
-  short-circuit differently and collapse exit codes).
-
-The importer is one of the product's headline features ("turn an existing CI file
-into an editable pipeline"), and this silently mistranslates the most common
-GitHub Actions idiom. No warning is emitted.
-
-**Fix.** Emit one IR step per non-empty line (the IR already models a list of
-steps, and per-step granularity is better for the editor anyway), or keep the
-newlines in a single step and let the executor pass the script to `sh -c`
-verbatim. Warn when a block contains comments or shell control flow.
-
-### IMP-02 — Shared `env` object across steps — **Medium**
-
-`ci-import/gitlab-ci.ts:99-110` assigns the same `env` object reference to every
-step of a job. Any future per-step env edit mutates all of them; canonical
-serialization also duplicates the content per step, inflating the document.
-
-### IMP-03 — Package-manager inference from free text — **Medium**
-
-`infer.ts:25-28` decides the package manager with `\bpnpm\b` / `\byarn\b` /
-`\bnpm\b` over *all* command text, first match wins in that fixed order. A
-workflow that runs `npm ci` but mentions pnpm in a comment or in a cache key is
-classified as pnpm, which then drives the install command, the Dockerfile lockfile
-line and the corepack prefix. The result carries warnings for skipped actions but
-never says "I guessed your package manager from command text".
-
-**Fix.** Add an explicit inference-provenance warning per inferred field, and
-prefer the *install* command's binary over any mention.
-
-### IMP-04 — Provider sniffing is regex-shaped — **Low**
-
-`sniffProvider` (`ci-import/index.ts:12-20`) can match a Kubernetes manifest or
-an Azure Pipelines file well enough to pick a converter and then fail with a
-confusing downstream message. A cheap structural check after `yamlLoad` would be
-more honest.
-
----
-
-## 5. Product behaviour
-
-### UX-01 — Unresolved fields cannot be resolved in the product — **Critical (for the product story)**
-
-The chain is airtight and it dead-ends:
-
-1. DR-004 only reads `engines.node` (`dr-004-runtime-version.ts`). Most real
-   projects do not declare it — `.nvmrc`, Volta, `.node-version` and CI
-   `setup-node` are all ignored.
-2. The detector then emits `runtime.version: null` + a paired `unresolved` entry.
-3. `findUnrunnableReason` makes that a hard block on `/api/generate`,
-   `/api/export/:provider` and `/api/execute` (422 / `unrunnable`).
-4. The UI disables **Generate artifacts** and **▶ Run pipeline** and displays
-   "Resolve `/project/runtime/version` before generating."
-5. `UnresolvedPrompt` (`Editor.tsx:342-357`) renders a `<code>` and a message.
-   **There is no input.** Nothing anywhere in the frontend can set
-   `project.runtime.version`, `packageManager.name/version` or `language` — the
-   editable surface is stages, steps, images and trigger branches only.
-
-So for a normal Node project the product detects, renders, scores and autosaves a
-pipeline it will never let the user generate or run, and instructs them to do
-something the UI does not permit. The only escapes are editing the target
-project's `package.json` or hand-editing an exported IR and re-importing it.
-
-Every fixture in `test/fixtures/` declares `engines.node` and (mostly)
-`packageManager`, which is exactly why 290 green tests do not see this.
-
-**Fix (both halves).** (a) Make unresolved prompts *editable*: a small form that
-commits a value and drops the paired `unresolved` entry — this is the missing
-half of the IR's `null ⟺ unresolved` design, and it needs a spec amendment
-because it adds a new editable surface. (b) Widen DR-004's evidence to `.nvmrc` /
-`.node-version` / `volta.node` (a detection-rule change, hence a rules-doc + spec
-update), or make the version `assume-default` to the current LTS with a visible
-"assumed" badge instead of a blocking unresolved.
-
-### UX-02 — The frontend's runnability gate disagrees with the backend's — **High**
-
-```ts
-// frontend/src/editor/working-ir.ts:16-20
-export function hasUnresolvedRequiredField(ir) {
-  if (ir.project?.packageManager?.name == null) return '/project/packageManager/name';
-  if (ir.project?.runtime?.version == null)     return '/project/runtime/version';
-  return null;
-}
-```
-
-The backend blocks on **five** fields (`ir/unrunnable.ts:19-25`), including
-`/project/packageManager/version`, `/project/runtime/name` and `/project/language`.
-When one of the three the UI ignores is null, Generate and Run look enabled and
-fail with a 422 citing a field the interface never mentioned.
-
-**Fix.** Import `findUnrunnableReason` from `@modules/ir` in the frontend — the
-alias already exists and this is precisely the class of drift the shared-symbol
-design was created to prevent.
-
-### UX-03 — The workspace bundle is delivered file-by-file with mangled names — **Medium**
-
-`WorkspaceStudio.tsx` downloads one artifact at a time and flattens the path
-(`active.path.replace(/\//g,'__')` → `frontend__Dockerfile`). A five-service
-bundle is ~16 downloads that the user must rename and re-file by hand. For a
-product whose value proposition is "generate everything together", the last mile
-is manual.
-
-**Fix.** A client-side zip preserving paths (or a copy-all-as-shell-script
-fallback); optionally an explicit, confirmed "write into the project" action —
-the read-only stance is a good default but it does not have to be the only one.
-
-### UX-04 — Port inputs coerce to 0 — **Medium**
-
-`Number(event.target.value)` on an empty `<input type="number">` yields `0`
-(`WorkspaceStudio.tsx:328`, `:344`), which passes client-side and fails later as a
-server check line. Intermediate typing states are equally broken.
-
-**Fix.** Keep the raw string in state, validate on blur, show the error inline.
-
-### UX-05 — Duplicate Doctor finding ids — **Medium**
-
-`frozenFinding` builds `id: unfrozen-install:${stage.id}` (`analyze.ts:185`) but
-is emitted **per step** (`analyze.ts:103-113`). A stage with two unfrozen install steps
-produces two findings with the same id → duplicate React keys in `DoctorPanel`
-and −20 instead of −10 on the score.
-
-### UX-06 — The Doctor does not flag its own detector's fallback image — **Low**
-
-`nodeImageFor` emits `node:lts-alpine` when the version is unknown
-(`rules/helpers.ts`). The unpinned-image rule only catches `:latest` or a missing
-tag (`analyze.ts:34`), and the drift rule only matches `^node:(\d+)`. The most
-common floating tag the product itself produces is invisible to the product's own
-reproducibility check.
-
-### UX-07 — Imported pipelines are unrunnable by design, with no way back — **Low**
-
-A pipeline loaded from a file or share link has `detectedPath === null`, so
-RunPanel is replaced by "Detect a workspace project to unlock ▶ Run". There is no
-"bind this pipeline to a folder" action, so the user must re-detect and lose the
-imported document. (The project-card CI import path does set a runnable path —
-which shows the mechanism exists.)
-
----
-
-## 6. Frontend engineering
-
-### FE-01 — History mutation inside a state updater — **Medium**
-
-```ts
-// useUndoableIR.ts:31-41
-setWorkingIR((current) => { past.current.push(current); … return next; });
-```
-
-Updater functions must be pure; React 18 StrictMode invokes them twice in
-development, so every edit pushes **two** history entries and ⌘Z appears to do
-nothing on the first press. `main.tsx` renders inside `StrictMode`, so this is the
-default dev experience.
-
-**Fix.** Model it as one reducer over `{past, present, future}` (a single
-`useReducer`), or compute the push outside the updater.
-
-### FE-02 — Stale closure in the autosave effect — **Medium**
-
-The effect at `Editor.tsx:777-800` branches on `saveState === null` but omits
-`saveState` from its dependency array behind an eslint-disable. The branch decides
-whether a pristine pipeline triggers a `DELETE`; reading a stale value makes the
-behaviour timing-dependent.
-
-### FE-03 — "Immutable Loaded IR" is only shallowly frozen — **Low**
-
-`Object.freeze(JSON.parse(JSON.stringify(ir)))` (`Editor.tsx:535`, `:598`) freezes the top
-level only; `loadedIR.project.runtime` is fully mutable. The invariant EDITOR-AC-024
-tests behaviourally is not enforced structurally.
-
-### FE-04 — Deprecated `escape`/`unescape` in share links — **Low**
-
-`encodeShareHash` / `decodeShareHash` (`Editor.tsx:463-468`). Works today,
-deprecated for two decades; `TextEncoder` + base64url is the drop-in.
-
-### FE-05 — `Editor.tsx` is a 1 369-line component — **Low**
-
-Discovery, drag-and-drop, import, share links, autosave, the stage chain, the
-toolbar and an inline IIFE-rendered detail panel all live in one file with ~20
-`useState` calls. It is readable today because it is well commented; it will not
-stay that way. Extracting `useDetectFlow`, `useAutosave` and `<StageChain/>` is
-low-risk.
-
-### FE-06 — Two suites test CSS text, not behaviour — **Low**
-
-`editor.css.spec.ts` and `product-shell.spec.ts` assert on the *contents* of CSS
-and config files (focus-visible rules, proxy target, font references). They lock
-strings, break on cosmetic refactors, and prove nothing about rendering. The
-proxy-target assertion is genuinely useful; the CSS-text assertions would be
-better as a computed-style check or dropped.
-
----
-
-## 7. Architecture, build and dependencies
-
-### ARCH-01 — The frontend compiles backend source — **Medium**
-
-`@modules/ir → ../backend/src/modules/ir` (`vite.config.ts`, `tsconfig.json`)
-delivers the "one symbol" guarantee the editor spec demands, but the cost is
-real: the frontend image must be built from the repo root with a bespoke
-`COPY backend/src/modules/ir`, the frontend's `tsconfig` compiles files outside
-its own root, and any backend-side refactor of that folder breaks the frontend
-build with no contract in between.
-
-**Fix.** Promote the IR to an internal workspace package (`packages/ir`) consumed
-by both apps. Same single symbol, a real boundary, simpler Docker context.
-
-### ARCH-02 — Two different YAML parsers — **Medium**
-
-Backend `js-yaml ^4.1.0`; frontend `js-yaml ^5.0.0` (5.0.0 installed). The editor
-parses pasted YAML and round-trips exported YAML with a *different* major version
-than the one that will parse it server-side on import. Any YAML 1.1/1.2 behaviour
-change between 4 and 5 becomes a "works in the browser, fails in the API" class of
-bug. EDITOR-AC-020's round-trip proof only exercises the frontend's parser.
-
-**Fix.** Pin one version across both packages (and add a cross-parser test for the
-export → import round trip).
-
-### ARCH-03 — Tailwind is installed, configured and unused — **Medium**
-
-`tailwindcss`, `postcss.config.js`, a themed `tailwind.config.js` and three
-`@tailwind` directives in `index.css` — and not one utility class in 3 766 lines
-of TSX (all styling is hand-written BEM across 3 322 CSS lines). It is a
-dependency, a build step and a config surface that do nothing.
-
-**Fix.** Remove it, or commit to it. The design tokens in `tailwind.config.js`
-duplicate values that already exist as CSS custom properties.
-
-### ARCH-04 — No linter, in a product that scores pipelines for not linting — **Medium**
-
-There is no ESLint config anywhere, no `lint` script in either `package.json`, and
-no lint step in `.github/workflows/ci.yml` — while `analyze.ts:92-100` penalises
-*user* projects for having no lint stage, `CLAUDE.md` states the project must run
-"build, lint, test" on itself, and the source contains
-`// eslint-disable-next-line` comments that nothing enforces (including the ones
-suppressing the real `react-hooks/exhaustive-deps` issues in FE-02).
-
-This is the sharpest dogfooding gap in the repository: the tool would give its own
-pipeline a worse grade than it gives its fixtures.
-
-### ARCH-05 — Autosave keys are un-normalized path strings — **Low**
-
-`StateStore.savePipeline(projectPath, …)` keys by the raw client string
-(`store.ts:58`). `demo-api`, `./demo-api`, `demo-api/` and the contained absolute
-path are four different saves for one project, so the restore bar and the "edited"
-badges depend on how the user typed the path.
-
-**Fix.** Key by the workspace-relative realpath (the controller already computes
-`realCandidate`).
-
-### ARCH-06 — Working-tree and repo hygiene — **Low**
-
-`backend/test/` exists and is empty; `git status` shows a large staged deletion of
-`backend/dist/**` (previously committed build output) and a staged deletion of
-`backend/.env` while the file is still on disk. None of this is dangerous, but a
-portfolio repository is read by humans and the first `git status` is part of the
-first impression.
-
----
-
-## 8. Spec-driven development — measured against `CLAUDE.md`
-
-This section matters more than any single bug: the repository's stated purpose is
-to *demonstrate* SDD, so drift here attacks the thesis, not just the code.
-
-### SDD-01 — Implementation without an Accepted spec — **High**
-
-`CLAUDE.md`: *"No implementation code before an Accepted spec covers it. […] do
-not bypass it to 'save time.'"*
-
-| Shipped code | Governing spec |
+| Check | Result in this review |
 |---|---|
-| `ci-export/github-actions.ts`, `ci-export/gitlab-ci.ts` | `github-actions-generator.spec.md` — listed **☐ Not started** in `docs/specs/README.md`; GitLab has no spec at all. |
-| `ci-import/**` (two importers + inference) | none |
-| `advisor/**` (Pipeline Doctor, scoring, grades) | none |
-| `state-store/**`, `run-registry.ts` persistence | none |
-| Share links (`#ir=`) | none |
-| `/api/projects`, `/api/directories`, `/api/directories/resolve` | none |
+| `pnpm typecheck` | Passed, both packages |
+| `pnpm lint` | Passed, both packages |
+| `pnpm build` | Passed, both packages |
+| `pnpm test`, unrestricted local Docker/socket access | Backend: **527 passed, 1 timed out**, 41 suites; frontend was not reached by the chained command |
+| Isolated retry, `pnpm --dir backend exec jest --runInBand execute.pure.spec.ts` | 9 passed; confirms the initial timeout was intermittent, not that the complete gate passed |
+| `pnpm --dir frontend test` | **130 passed**, 15 files |
+| `docker build -f frontend/Dockerfile .` | **Failed**, missing `frontend/tailwind.config.js` in `COPY` at line 31 |
+| Review backend probes | R01–R18 reproduced; Docker calls mocked where explicitly noted |
+| Review UI probes | U01–U04: **4 passed**, each assertion confirms a defect, not correct behavior |
+| Bounded edge probes | Cyclic YAML caused `RangeError`; FIFO discovery exceeded the 1-second child-process deadline |
+| Dependency audit | Registry advisories found; production and development separated below |
 
-`04-productization-brief.md` authorises these capabilities in prose, but prose
-carries no `FR`/`AC` ids, so no test can trace to it and `test-strategy.md` cannot
-account for them. The result is that roughly a third of the backend is outside the
-process the project exists to demonstrate.
+Environment: macOS, Node `v24.12.0`, pnpm `9.15.0`. CI and Docker use Node 20, so this is not a Node 20 compatibility certification. The first sandboxed test attempt failed on socket/listen restrictions; those failures are **not** counted as product defects. Docker integration subsequently ran successfully with access to the daemon. No hosted GitHub/GitLab pipeline was dispatched, and no successful full Compose smoke run is claimed.
 
-**Fix.** Write the missing specs retroactively and honestly — `CI-EXPORT`,
-`CI-IMPORT`, `ADVISOR`, `STATE` — each with its `FR`/`AC` ids mapped to the tests
-that already exist. That is a documentation exercise, not a rewrite, and it turns
-the gap into evidence of rigour instead of evidence of drift.
+### What “repo-wide” means here
 
-### SDD-02 — A spec that contradicts its own test, while the traceability table claims coverage — **High**
+The review traversed the first-party source/configuration surface, followed data across module boundaries, ran the existing suites, and manually inspected relevant tests and specifications alongside the implementation. CSS, presentation, fixtures and documentation received a lighter review than execution, filesystem, persistence and generation. This is **not a claim of a separately documented manual audit of every line of every test, stylesheet, lockfile or third-party dependency**. Lockfiles were checked through dependency audits; vendored dependencies and generated `dist` output are not first-party review findings. A complete file inventory is included with the evidence so the scope is inspectable.
 
-- Spec: *"**EDITOR-AC-022** — The Editor exposes no UI control for editing
-  `steps[].run`, adding a Stage, deleting a Stage, or reordering Stages (negative
-  test by absence)."* (`visual-editor.spec.md:877`)
-- Test: `Editor.spec.tsx:294-308` — *"T-EDITOR-022 (superseded) … This test pins
-  the NEW surface: those affordances exist"*, asserting `Add stage`,
-  `Delete lint stage` and `Edit install step 1` **are** present.
-- Traceability: `test-strategy.md` still reports
-  `EDITOR-AC-022 | T-EDITOR-022 (no add/delete/reorder/run-edit affordances present) | ✅`.
+There is no inference that unmentioned files are defect-free. Runtime evidence, code-path evidence and explicitly deferred hypotheses are distinguished below.
 
-The table asserts the opposite of reality while showing a green tick. A reviewer
-who trusts the traceability table is misled; the lifecycle in `specs/README.md`
-("changes now require a changelog entry") was not followed.
+### Reproduce the review evidence
 
-**Fix.** Supersede AC-022 with an amendment describing the open editable surface
-(and its new invariants: chain stays linear, ids stay unique), update the table,
-and record the change in the spec changelog — the mechanism already exists and was
-used well for the 2026-06-15 detector amendment.
+See [`docs/reports/review-evidence/README.md`](docs/reports/review-evidence/README.md), including commands, limitations, machine-readable results, and the UI probes. These are diagnostic reproductions kept outside the normal test suites. They assert the current broken behavior and should be inverted into regression tests during implementation.
 
-### SDD-03 — The Executor is not "Done" by the project's own definition — **Medium**
+## 2. Findings to prioritize
 
-`pipeline-executor.spec.md` defines `EXEC-AC-001…017` and the tests exist
-(`execute.pure.spec.ts`, `execute.docker.spec.ts`, `workspace.spec.ts`,
-`output-buffer.spec.ts`), but **`test-strategy.md` contains zero `EXEC-AC` rows**.
-Per its own "Definition of Done", a criterion with no traceability row is not
-covered — which is consistent with the status column: IR, DOCKER, DET, EXEC and
-EDITOR are all still `Accepted`, never advanced to `Implemented`, even though
-every one is implemented and green.
+| ID | Priority | Finding | Evidence |
+|---|---|---|---|
+| AR-01 | P1 | Visibility marker follows a copied symlink and overwrites a host file | R01 |
+| AR-02 | P1 | Manifest file symlinks escape workspace containment | R02 |
+| AR-03 | P1 | A FIFO named `package.json` blocks the API process | L03 |
+| AR-04 | P1 | Frontend production image cannot build | Actual Docker build |
+| AR-05 | P1 | Saved pipeline from A can be restored into project B | U04 |
+| AR-06 | P1 | Rescanning a workspace keeps the previous workspace plan | U01 |
+| AR-07 | P2 | Autosave acknowledges a disk write that never happened | R18 |
+| AR-08 | P2 | Undo during the first in-flight autosave leaves obsolete saved data | U03 |
+| AR-09 | P2 | In-flight generation returns outdated artifacts as current | U02 |
+| AR-10 | P1 | Metadata can inject Dockerfile/YAML structure | R03, R10; source |
+| AR-11 | P1 | Multi-line build scripts become invalid Dockerfile instructions | R04 |
+| AR-12 | P1 | Imported step environment/directory semantics are lost | R06; source |
+| AR-13 | P1 | Valid dependency chains execute in the wrong order | R05 |
+| AR-14 | P2 | Zero-stage pipeline reports passed after no work | R07 |
+| AR-15 | P1 | Valid stage IDs overwrite GitLab configuration keys | R08 |
+| AR-16 | P2 | GitLab export ignores selected trigger branches | R16 |
+| AR-17 | P2 | GitLab uses a best-effort cache as a required workspace transfer | Source; provider docs |
+| AR-18 | P2 | Workspace CI silently drops environment, directories and image choices | Source |
+| AR-19 | P2 | Vite Dockerfile still requires a missing lockfile | R11 |
+| AR-20 | P2 | Editable Vite container port disagrees with generated nginx | R10 |
+| AR-21 | P1 | CI import silently changes conditions/setup semantics | R14; source |
+| AR-22 | P2 | Fallback image overrides explicit setup-node evidence | R15 |
+| AR-23 | P2 | Persisted state is not shape-validated and has prototype-key collisions | R12; source |
+| AR-24 | P2 | YAML alias graphs defeat depth-only validation | L01 |
+| AR-25 | P2 | Active runs and live SSE buffering have no global bound | R17; source |
+| AR-26 | P2 | Abort/cleanup is best-effort without container termination acknowledgement | Source; race not integration-reproduced |
+| AR-27 | P2 | Run UI cannot reliably recover availability or a lost stream | Source |
+| AR-28 | P1 | Restored imports lose provenance; review is not tied to document identity | Source |
+| AR-29 | P2 | Dependency advisories remain in locked production/dev trees | Registry audit |
+| AR-30 | P2 | Validator accepts malformed fields consumed unsafely downstream | R09, R13; source |
+| AR-31 | P2 | Existing tests and status documents overstate the proven guarantees | Gate results; inspected tests |
+| AR-32 | P2 | Generated “local” Compose services publish on all interfaces | R10; Docker docs |
 
-**Fix.** Add the 17 EXEC rows and advance the five statuses. Low effort, high
-signal — the progress board currently understates the project.
+P1 does not mean every item is a critical security vulnerability. It also covers reproducible data corruption, a blocked product delivery path, and a central correctness promise that currently fails.
 
-### SDD-04 — Non-obvious decisions with no ADR — **Medium**
+## 3. Filesystem and execution boundary
 
-`CLAUDE.md` step 4: *"Record any non-obvious decision as a new ADR."* Missing:
-joining multi-line `run` blocks with `&&` on import (IMP-01 — a semantic decision
-with real consequences), hardcoding `docker:27`+dind in the GitLab export
-(GEN-05), the advisor's penalty weights and grade bands, persisting state in
-`~/.pipe-editor` keyed by a workspace hash, and the share-link format (which is a
-security-relevant choice, see SEC-02).
+### AR-01 — P1: the visibility marker can overwrite files outside the copy
 
-### SDD-05 — The detection-rules catalogue is unverified prose — **Low**
+**Location:** `backend/src/modules/executor/workspace.ts:22`; `workspace-visibility.ts:60–62`.
 
-`docs/rules/detection-rules.md` describes DR-001…011; nothing asserts that
-`ALL_RULES` matches the catalogue (ids, targets, evidence order). A cheap test
-("every documented DR id is registered, and vice-versa") would make the document
-self-enforcing.
+`cpSync(..., { dereference: false })` preserves symlinks. The fixed `.pipe-editor-visibility-probe` filename is then opened with ordinary `writeFileSync`, which follows a symlink. A project containing that filename as a symlink to a writable host file causes the backend to replace the target's contents with a UUID **before** any stage executes. The probe subsequently failing does not undo the overwrite.
 
----
+**Confirmed:** R01 uses a disposable project and a sentinel outside it; the sentinel changes even though Docker is mocked to fail. No real user file was touched. This invalidates both “temp-copy protects the working tree” and “nothing writes to the user's project” when the target points there.
 
-## 9. Testing
+**Fix direction:** create an unpredictable marker with exclusive/no-follow creation, verify regular-file identity, and remove only the file created by this operation. Define safe treatment of symlinks during copying. **Acceptance:** internal/external/dangling marker symlinks never modify their targets, on success or failure; an existing regular marker is not destroyed.
 
-| # | Gap | Severity |
-|---|---|---|
-| TEST-01 | **No fixture without `engines.node` or without a lockfile.** All 11 declare `engines.node`. This single blind spot hides UX-01, UX-02 and GEN-04 behind 290 green tests. Add `node-npm-no-engines/` and `node-pm-field-no-lockfile/` and assert the *whole* flow, not just detection. | High |
-| TEST-02 | No adversarial-input tests for generators and importers: scoped package names, names/stage names with newlines or `:`, multi-line commands, a branch literal `*`, env keys with `:`, a 50 MB manifest, a 10⁵-deep IR. | Medium |
-| TEST-03 | `/api/export/:provider` output is never parsed back as YAML in any test, although the workspace-bundle path proves the technique works. | Medium |
-| TEST-04 | No HTTP-level tests for `/api/advise`, `/api/state/*`, `/api/execute*`, `/api/projects`, `/api/directories*` — the underlying functions are covered, the wire contracts are not. | Low |
-| TEST-05 | The Docker-unavailable degradation path (availability false → disabled Run with a reason) is not exercised end to end in CI. | Low |
+### AR-02 — P1: directory containment does not contain manifest reads
 
----
+**Location:** `backend/src/modules/detector/manifests.ts:37–57`; `editor-api/bounded-read.ts:38`; `editor-api/project-scan.ts:201–214`.
 
-## 10. Suggested order of work
+The API resolves the selected directory against the workspace boundary, but individual `package.json`, lockfile, `.nvmrc` and other manifest paths are subsequently read with following `statSync`/`readFileSync`. A contained directory can therefore expose a manifest outside the allowed root through a file symlink. Directory-symlink tests do not cover this case. Discovery also reads through `.github/workflows` directory symlinks when inventorying filenames.
 
-**Now — the product is wrong without these**
+**Confirmed:** R02 returns an outside sentinel's project name from both detect and scan. This proves an out-of-bound read; arbitrary secret exfiltration through every manifest/parser is not claimed.
 
-1. UX-01: editable unresolved prompts (+ spec amendment) and/or widen DR-004.
-2. UX-02: frontend imports `findUnrunnableReason`.
-3. GEN-01 + GEN-02: sanitize interpolated values; emit YAML through a serializer;
-   add the parse-back assertion to the single-service export path.
-4. IMP-01: stop collapsing multi-line `run` blocks with `&&`.
-5. TEST-01: the two missing fixtures, asserted through generate + run.
+**Fix direction:** one contained, regular-file read primitive used by every reader, checking the actual file opened and its allowed boundary; address TOCTOU explicitly. **Acceptance:** external manifest/workflow symlinks are rejected or skipped with a useful diagnostic; contained legitimate links have a specified policy.
 
-**Next — the claims must stay true**
+### AR-03 — P1: the “bounded” reader can block indefinitely
 
-6. SEC-01 (Host allowlist) and SEC-02 (provenance + explicit confirmation).
-7. SEC-05: refuse to run when the temp copy is not visible to the daemon.
-8. SDD-02 + SDD-03: fix the contradicted AC, add the EXEC rows, advance the five
-   spec statuses.
-9. SEC-03/SEC-04: image and env-key validation inside `validate()`.
-10. GEN-04 + GEN-03: lockfile awareness and an honest build-output assumption.
+**Location:** `backend/src/modules/editor-api/bounded-read.ts:38–41`; `project-scan.ts:214`; `import.controller.ts:98–101`.
 
-**Then — the thesis must hold**
+Checking `stat.size` is not a bounded read. A FIFO can have size zero, then block synchronous `readFileSync` waiting for a writer. Discovery calls this reader without a regular-file check; it blocks the Node event loop, including health and abort requests. The import file reader has the same structural weakness. A changing regular file can also grow between stat and read.
 
-11. SDD-01: retroactive specs for CI export, CI import, advisor and state.
-12. ARCH-04: ESLint + a `lint` script + a CI lint step (dogfooding).
-13. ARCH-02/ARCH-03: one YAML version; remove or adopt Tailwind.
-14. FE-01/FE-02, UX-05, ARCH-05, SEC-06/07/09.
-15. ARCH-01: extract `packages/ir`.
+**Confirmed:** L03 creates an isolated FIFO named `package.json`; a child running `scanProjects` is killed at its deadline. The live API was not deliberately blocked.
 
----
+**Fix direction:** refuse special files, impose an actual byte budget while reading, and avoid uninterruptible synchronous scanning. **Acceptance:** FIFO/device/directory inputs return promptly; size growth cannot exceed the budget; healthy sibling projects remain discoverable.
 
-## 11. One-paragraph verdict
+### AR-13 — P1: dependency order and execution order disagree
 
-The core is better than most projects of this kind: the IR contract is real and
-enforced, the filesystem boundary is carefully built, the executor's security
-model is correct by construction, and the tests genuinely run containers. The
-weaknesses are concentrated in three places — the **last mile** (a user whose
-project does not look like a fixture hits a dead end with no way out; the
-generated artifacts are assembled by string concatenation and can be broken by a
-scoped package name or a colon in a stage name), the **trust model** (an
-unauthenticated loopback API with no rebinding defence, one click from executing
-an IR that arrived in a URL), and the **process** (a third of the backend has no
-spec, one acceptance criterion asserts the opposite of its own test, and the
-traceability table shows it green). None of these require a rewrite. The first two
-are a focused week; the third is documentation the project already knows how to
-write — and, given that the repository exists to demonstrate spec-driven
-development, closing it is worth more than any feature.
+**Location:** `backend/src/modules/ir/effective-chain.ts:24`; `executor/execute.ts:109`; both CI exporters.
+
+`validate()` accepts a linear graph regardless of array order, and canonicalization knows how to order it. `computeEffectiveChain()` preserves the incoming array order; `execute()` iterates that same array directly. The HTTP execution/export paths validate but do not canonicalize first.
+
+**Confirmed:** `[second dependsOn first, first dependsOn []]` validates, yet the captured executor calls run `echo SECOND` before `echo FIRST` (R05). Exporting canonical JSON can change subsequent behavior by sorting this very same document.
+
+**Fix direction:** normalize order at a shared validated boundary or have all consumers use the canonical effective order. Keep result display ordering separately if necessary. **Acceptance:** every permutation of the same valid graph produces the same execution and generated CI order.
+
+### AR-14 — P2: an empty pipeline gets a green result
+
+**Location:** `backend/src/modules/executor/execute.ts:69`, `aggregateOf`.
+
+The empty-effective-chain refusal is guarded by `opts.ir.stages.length > 0`. A fully resolved IR with `stages: []` goes through Docker availability/copy/probe, runs nothing, then returns `passed`. R07 confirms this with mocked infrastructure. This is distinct from the explicitly documented behavior of an enabled zero-step stage.
+
+**Acceptance:** a zero-stage document returns a clear no-work/unrunnable result without Docker or filesystem work; all-disabled and docker-build-only behavior stays explicit.
+
+### AR-25 — P2: bounds are per stream, not per system
+
+**Location:** `backend/src/modules/editor-api/run-registry.ts:80,177,200`; `execute.controller.ts:186`.
+
+`maxRetainedRuns` only evicts completed runs and only when a new run starts. It is not a concurrency limit. R17 starts eight unresolved runs in a registry configured for two. Finished summaries can remain above the limit until another start triggers eviction. Each active run can copy a project and create containers. Live SSE writes ignore the `res.write()` backpressure signal, so the bounded replay buffer does not bound a slow subscriber's outbound queue.
+
+**Fix direction:** limit active runs, queued runs, total retained output and subscribers; evict on completion; stop/drop slow streams using a documented policy. Add limits for copy bytes/files and scan queues. Resource isolation and stage timeouts are currently declared v1 non-goals/open questions: changing those requires a spec decision, not pretending the old spec already required them.
+
+**Acceptance:** bounded-concurrency and slow-client tests measure retention/memory behavior without an intentional host resource-exhaustion attack.
+
+### AR-26 — P2: abort does not prove cleanup completed
+
+**Location:** `backend/src/modules/executor/docker-client.ts:153–166,203–219`; `executor/workspace.ts:22`; `execute.ts:164–165`.
+
+Abort issues detached `docker stop` when the cidfile is already present, then terminates the CLI. An early abort can miss the cidfile. Cleanup can remove the copy while the container has not acknowledged stopping. The visibility probe does not consume the caller's abort signal, and failure while copying occurs before a cleanup closure is returned. Errors from the detached stop process are not handled by its surrounding synchronous `try/catch`.
+
+These are code-path lifecycle findings, **not a demonstrated container escape or a reproduced orphan-container exploit**.
+
+**Acceptance:** inject abort before creation, during pull/probe, during a stage, and during stop failure; await confirmed removal before workspace cleanup; interrupted copies are removed; no unhandled child-process error survives.
+
+## 4. Build and artifact correctness
+
+### AR-04 — P1: production Docker build is broken
+
+**Location:** `frontend/Dockerfile:31`; `.github/workflows/ci.yml`, Compose smoke step.
+
+The Dockerfile still copies `frontend/postcss.config.js` and `frontend/tailwind.config.js`; both were removed by the Tailwind removal. An actual Docker build fails at that COPY. A successful Vite build does not exercise the Dockerfile. The existing CI smoke step would detect this if reached; it is not evidence that it has passed on this tree.
+
+**Acceptance:** remove obsolete inputs, build both production images from a clean checkout, then run the existing health smoke tests. No need to reinstall Tailwind.
+
+### AR-10 — P1: only some interpolated metadata is sanitized
+
+**Location:** `backend/src/modules/dockerfile-generator/generate.ts:106,193,261`; `workspace-bundle/generate.ts:150,274`; `ir/validate.ts:173`.
+
+The single-service generator sanitizes `project.name`, but interpolates runtime/package-manager version strings directly into comments and runtime versions into `FROM`. Validation accepts arbitrary strings there. The Vite template interpolates `service.name` into a comment without sanitizing it. The workspace GitLab header similarly interpolates `plan.name` directly.
+
+**Confirmed:** R03 inserts a new `RUN` line through a version field accepted by `validate`; R10 inserts a new Dockerfile line through a Vite service name while **all bundle checks pass**. These probes establish structural injection/invalid output; they do not establish a successfully built malicious image or host command execution.
+
+**Fix direction:** validate version values before interpolation, sanitize every generated comment consistently, and serialize all generated YAML as data. **Acceptance:** CR/LF/control-character cases across every metadata field either fail validation or remain literal text; no extra directive/job appears.
+
+### AR-11 — P1: multi-line build commands are not Dockerfile-safe
+
+**Location:** `backend/src/modules/dockerfile-generator/generate.ts:339`; `workspace-bundle/generate.ts:146–159`.
+
+A build step containing `echo first\necho second` becomes `RUN echo first` followed by the Dockerfile instruction `echo second`. A trailing shell comment can also swallow the ` && ` join and later steps. R04 reproduces the invalid instruction. `REPORT.md` already acknowledges the join limitation, but understates its impact on imported scripts and deployable artifacts.
+
+**Acceptance:** multi-line comments, conditionals, heredocs and multiple steps survive generation and a real Docker build; execution failure behavior is preserved. Choose an explicit shell-script encoding or supported Dockerfile heredoc syntax, not ad-hoc newline escaping.
+
+### AR-12 — P1: a step's execution context does not survive the pipeline
+
+**Location:** `backend/src/modules/executor/execute.ts:215–249,302`; `ci-export/github-actions.ts:99–102,151`; `ci-export/gitlab-ci.ts:101–109`; Dockerfile generation.
+
+Imported steps preserve separate env maps and `workingDir`, but execution merges all step env maps into one container env and uses only the first step's directory. Single-service exporters omit working directories and merge env across steps. Dockerfile build commands omit both.
+
+**Confirmed:** R06 gives step one `MODE=one`, directory `one`, and step two `MODE=two`, directory `two`; the runner request instead has `MODE=two` globally and `/workspace/one`. The GitHub output contains no directory configuration.
+
+**Contract nuance:** `EXEC-FR-008` explicitly codifies env merging. That is a **design incompatibility with imported per-step semantics**, not simply failure to implement that executor requirement. Either preserve per-step contexts throughout or reject/warn about unsupported differences before execution/export; update conflicting specs together. **Acceptance:** two distinct env/directory steps produce the intended values/locations, with no silent conversion.
+
+### AR-15 — P1: GitLab stage IDs collide with reserved top-level fields
+
+**Location:** `backend/src/modules/ci-export/gitlab-ci.ts:84–109`.
+
+The exporter writes the `stages` array, then assigns jobs to `doc[stage.id]`. A valid IR stage named `stages` replaces the array with a job object. Other provider-reserved names such as `image`, `default`, `variables`, or `cache` can also be interpreted as global configuration. YAML round-trip equality still passes because the wrong source object round-trips perfectly.
+
+**Confirmed:** R08 validates and exports a mapping in `stages:`. **Acceptance:** use a collision-free provider job namespace independent of IR IDs, preserve dependency mappings, and validate provider schema, not just YAML syntax.
+
+### AR-16 — P2: GitLab ignores trigger branches
+
+**Location:** `backend/src/modules/ci-export/gitlab-ci.ts:34–134`; `docs/specs/ci-export.spec.md`, CIEXPORT-FR-015.
+
+R16 changes branches to `release-only`; GitLab export remains byte-identical. The branch editor promises to control exported CI configs, but this provider emits no matching rules/workflow filter. **Acceptance:** branch and pipeline-source behavior is tested for both providers; any intentionally unsupported trigger produces a warning/refusal.
+
+### AR-17 — P2: cache is not a reliable handoff between jobs
+
+**Location:** `backend/src/modules/ci-export/gitlab-ci.ts:84–90`.
+
+Downstream jobs assume `node_modules/` and `dist/` arrive through a cache keyed only by lockfile. There is no install fallback or explicit artifact transfer. Different runners can miss that cache; different pipelines with the same lockfile can reuse it. The header calls it pipeline-scoped, but the key contains no pipeline identity. Arbitrary files created by custom stages are not transferred at all.
+
+This implementation follows CIEXPORT-FR-011; the **spec's design needs correction**. GitLab distinguishes reusable dependency caches from artifacts used for intermediate build results. [GitLab caching documentation](https://docs.gitlab.com/ci/caching/).
+
+**Acceptance:** downstream jobs work with empty caches and across runners; outputs come from the current pipeline through explicit dependencies/artifacts, or commands share one job with a clearly documented image policy.
+
+### AR-18 — P2: workspace CI has a separate, weaker translation path
+
+**Location:** `backend/src/modules/workspace-bundle/generate.ts:229–301`.
+
+The workspace generators copy `step.run`, but neither emits `step.env` nor honors step directories within the service. GitHub executes on the VM using setup-node and ignores stage images; GitLab selects only the first verification image. Unlike single-service export, image divergence is not reported. Bundle validation checks YAML parsing and string presence, not these semantics.
+
+**Acceptance:** compare the same service IR across local execution, single export and workspace export; preserve the supported context or report each difference. Consolidate shared translation rules while keeping genuinely different layouts explicit.
+
+### AR-19 — P2: Vite has not received the no-lockfile fix
+
+**Location:** `backend/src/modules/workspace-bundle/generate.ts:155–156,403–414`.
+
+Detection correctly switches to resolving installation when there is no lockfile. The Vite-specific template still emits mandatory `COPY package.json package-lock.json ./` and `RUN npm ci` (analogously frozen pnpm/yarn). R11 changes the install stage to `npm install`; the Vite artifact still demands the lockfile. The prior GEN-04 closure therefore does not cover this path.
+
+**Acceptance:** a real Vite fixture without a lockfile gets an honest, buildable resolving artifact or an explicit unsupported-state response; common install/render logic cannot diverge silently.
+
+### AR-20 — P2: changing a Vite container port breaks connectivity
+
+**Location:** `frontend/src/editor/WorkspaceStudio.tsx`, container-port field; `backend/src/modules/workspace-bundle/generate.ts:172,206`.
+
+The UI permits any valid container port. Compose uses the edited value, while nginx and the health check remain fixed to port 80. R10 produces `3000:8080` with `listen 80` and all checks green. **Acceptance:** either fix the Vite container port in the UI/schema or render it consistently into nginx, EXPOSE, Compose and health checks; verify HTTP reachability.
+
+### AR-32 — P2: “local orchestration” exposes generated services to the LAN
+
+**Location:** `backend/src/modules/workspace-bundle/generate.ts:206`.
+
+Generated ports use `hostPort:containerPort`, unlike the editor's own Compose file, which explicitly uses `127.0.0.1`. With no host IP Docker publishes on all interfaces. This can expose a development app that has no authentication when the user follows the local-run flow. This is a default/product-policy issue, not a claim that the editor API itself is LAN-exposed. [Docker port publishing](https://docs.docker.com/get-started/docker-concepts/running-containers/publishing-ports/).
+
+**Acceptance:** default generated local bundles to loopback, or make broader exposure an explicit reviewed choice and test the resulting mapping.
+
+## 5. Frontend state, persistence and trust
+
+### AR-05 — P1: a delayed restore response crosses project boundaries
+
+**Location:** `frontend/src/editor/Editor.tsx:499–508,759–763`.
+
+After detecting A, `getSavedPipeline(A)` is not cancelled or tied to a request/project generation. Detect B before it resolves: A's response sets `restoreCandidate` in B's editor. Restore applies A's IR without checking `saved.projectPath` against the current project; autosave can then write that IR under B, and a run targets B's files.
+
+**Confirmed:** U04 restores a sentinel pipeline from A while the current path remains B. **Acceptance:** delayed detect/import/restore/bind responses cannot modify a newer document session; restore validates both the IR and its project identity.
+
+### AR-06 — P1: workspace rescans keep the old plan
+
+**Location:** `frontend/src/editor/WorkspaceStudio.tsx:28`; `Editor.tsx:1149`.
+
+`initialPlan` is read only by the `useState` initializer. Scanning another folder while the studio is mounted passes a new prop to the same component, which continues displaying/editing/generating the old plan. U01 reproduces this with a prop change.
+
+**Acceptance:** scanning B after A shows B and generates B's services. Use an explicit document-session reset or keyed remount; do not erase current edits on unrelated re-renders.
+
+### AR-07 — P2: “Saved” can mean memory-only
+
+**Location:** `backend/src/modules/state-store/store.ts:58–68,126–137`; `state.controller.ts:77`; `frontend/src/editor/useAutosave.ts:84–86`.
+
+The store catches all write failures, returns a saved record anyway, and the API responds successfully. The frontend therefore says Saved even when nothing reached disk. R18 points the data directory at a file: save is acknowledged, but a new store cannot restore it.
+
+Persistence may remain non-fatal without lying about durability. **Acceptance:** failed writes leave editing usable but return/report a retryable persistence failure; the Saved indicator appears only after durable acknowledgement. Include disk-full/permission errors and restart verification.
+
+### AR-08 — P2: undo races the first autosave acknowledgement
+
+**Location:** `frontend/src/editor/useAutosave.ts:76–91`.
+
+Once the debounce fires, requests have no revision identity. Undo to the baseline while the first PUT is pending: `savedThisSession` is still false, so no DELETE is scheduled. The old PUT then resolves, sets Saved, and leaves the edit on the server even though the UI is pristine. U03 confirms exactly this. Switching documents also lets old completions alter the shared saved flag.
+
+**Acceptance:** serialize/version save operations per project; after all requests settle, persisted state equals the latest intended state. Test edit→undo before acknowledgement, reverse completion order, project switch and navigation during the debounce. Flush or explicitly surface unsaved work before leaving.
+
+### AR-09 — P2: an old bundle becomes current after an edit
+
+**Location:** `frontend/src/editor/WorkspaceStudio.tsx:43–55,81–89`.
+
+An edit clears the previous bundle, but a pending generation response unconditionally reinstalls its obsolete artifacts. There is no request digest or outdated badge. U02 edits the start command during generation, then observes OLD ARTIFACT displayed beside the new command.
+
+**Acceptance:** bind artifacts to plan/provider/mode revision and ignore or visibly mark stale responses; cover edits, provider changes and workspace changes while generating.
+
+### AR-23 — P2: persisted JSON is trusted as typed state
+
+**Location:** `backend/src/modules/state-store/store.ts:54,102–123`; `frontend/src/editor/Editor.tsx:502–505,759`.
+
+Parsing JSON does not validate its shape. `pipelines.json` containing `[]`, `42` or `{ "app": null }` can produce silent non-persistence or crashes outside the parsing catch. Saved IRs are restored without `validate()`. Plain-object dictionaries additionally treat project names such as `__proto__`, `constructor` and `toString` as inherited/prototype properties. R12 shows a save for `__proto__` disappearing from the persisted/indexed keys.
+
+**Acceptance:** validate disk schemas and saved IRs, use own-property checks/null-prototype maps, recover malformed records without losing healthy ones, and test legal directories named `__proto__` and `constructor` across restart.
+
+### AR-27 — P2: execution recovery is incomplete
+
+**Location:** `frontend/src/editor/RunPanel.tsx:212–227,247–258`; `api.ts:370–395`; `backend/src/modules/executor/docker-client.ts:53–57`.
+
+Availability is fetched once when the panel mounts; a false result disables Run with “start Docker”, but starting it provides no refresh mechanism. Conversely the backend uses `docker --version`, which proves the CLI exists, not that the daemon works. SSE relies on EventSource reconnecting and reports loss only at CLOSED; there is no implemented summary-polling fallback, event ID/deduplication, or handling of the backend's `stream-closed` event. Reconnects replay logs, and unavailable/evicted runs can remain visually running. Viewing history while a run is active closes its stream and drops the current run's controls.
+
+**Acceptance:** refresh/retry daemon readiness, reconnect without duplicated output, reconcile against the summary endpoint, handle eviction/restart explicitly, and retain a way to observe/abort an active run while viewing history.
+
+### AR-28 — P1: provenance does not survive restoration
+
+**Location:** `frontend/src/editor/Editor.tsx:494,759–763`; `RunPanel.tsx:206–210`; `backend/src/modules/state-store/store.ts`, SavedPipeline.
+
+The store persists IR but no provenance. Detect marks the session `detected`; restoring saved imported/shared commands does not change that provenance, so the next run skips the untrusted-command review. RunPanel's acknowledgement also resets only when the provenance enum/label changes, not when a different document with the same source label is loaded. The review dialog lists command text but not the image/env/directory context that affects execution.
+
+**Acceptance:** persist provenance or conservatively treat restored edits as untrusted; tie acknowledgement to document/session identity and relevant execution context. Test imported→save→reload→detect→restore→Run, plus two different imports bearing the same filename.
+
+## 6. Import, validation and assurance
+
+### AR-21 — P1: unsupported CI semantics are silently discarded or added
+
+**Location:** `backend/src/modules/ci-import/github-actions.ts:98–145`; `gitlab-ci.ts:82–100`.
+
+GitHub job/step `if`, `shell`, `defaults.run.working-directory`, service configuration and related execution controls are not preserved and generally receive no corresponding warning. A step with `if: false` can become enabled local shell work. This violates CIIMPORT-NFR-003's “lossy, and loud” contract, even though full CI simulation is out of scope.
+
+GitLab additionally concatenates default and job `before_script`; GitLab job configuration overrides that default instead. A top-level `before_script` is ignored. R14 confirms both behaviors. The existing acceptance criterion explicitly expects concatenation: fix the spec and test, not just code. [GitLab YAML reference](https://docs.gitlab.com/ci/yaml/#default).
+
+**Acceptance:** representative unsupported keys produce specific warnings or safe refusal; known false/manual conditions do not silently turn into executable stages; setup precedence matches the provider for the supported subset.
+
+### AR-22 — P2: an invented fallback becomes stronger than explicit evidence
+
+**Location:** `backend/src/modules/ci-import/github-actions.ts:180–200`; `ci-import/infer.ts:49–64`.
+
+A job with setup-node 22 and no container is assigned fallback `node:20-alpine`; inference then reads 20 from that invented image before considering setup-node's 22. R15 returns runtime 20 and image 20. A generic fallback warning does not explain that explicit runtime evidence was discarded.
+
+**Acceptance:** distinguish observed images from fallback choices; carry setup-node evidence through inference and choose/report a compatible image, including conflicts and multiple hints.
+
+### AR-24 — P2: a depth cap does not handle YAML object graphs
+
+**Location:** `backend/src/modules/ir/validate.ts:69–103`; `frontend/src/editor/Editor.tsx:574–610`.
+
+`js-yaml` can produce cycles/shared aliases. The recursive forbidden-key walk revisits them, accumulates many duplicate errors and spreads large arrays. L01 feeds `metadata: &x [*x, *x]` and gets `RangeError: Maximum call stack size exceeded`, despite the depth cap. The browser YAML-import validation occurs outside the parsing catch; adding the same metadata to an otherwise valid IR reaches this path. File import also reads arbitrary-sized files in full before validation.
+
+**Acceptance:** reject cycles or safely track visited objects; bound total nodes, errors, strings and input bytes, not just depth. Invalid YAML/IR produces a recoverable error rather than an unhandled rejection or excessive work. L02's 1,000/3,000/5,000-stage JSON cases passed here; a graph-stack-overflow claim for those inputs is **not** made.
+
+### AR-30 — P2: the runtime schema is incomplete
+
+**Location:** `backend/src/modules/ir/validate.ts:110–211`; `editor-api/project-scan.ts:214–230`; `ci-import/github-actions.ts:38–52`.
+
+`triggers` is not validated at all; metadata requires only a non-null object; version syntax is accepted without a supported-version policy. R09 supplies `branches: "main"`, gets no validation errors, and exports the wrong branch-list shape. `package.json` equal to JSON `null` parses successfully but crashes scan property access (R13). GitHub `jobs: null` or null job/step entries similarly bypass loose checks and become internal errors rather than actionable invalid-input responses.
+
+**Acceptance:** complete runtime validation for every consumed field, supported versions and object shapes; table-driven malformed input at HTTP/import/state boundaries; stable error envelopes for bad JSON, oversized bodies, unknown routes and domain validation errors. Do not rely on TypeScript casts or a ValidationPipe whose payloads have no concrete DTO schema.
+
+### AR-29 — P2: dependency hardening is incomplete
+
+`pnpm audit --json` and `--prod` were run without installing/upgrading packages. Results are preserved in [`dependency-audit.json`](docs/reports/review-evidence/dependency-audit.json).
+
+| Tree | Critical | High | Moderate | Low |
+|---|---:|---:|---:|---:|
+| Backend, all | 0 | 31 | 16 | 6 |
+| Backend, production only | 0 | 10 | 12 | 2 |
+| Frontend, all | 1 | 9 | 10 | 1 |
+| Frontend, production only | 0 | 0 | 0 | 0 |
+
+These are registry-reported advisory counts, **not independently proven exploitable vulnerabilities in this app**. The critical frontend advisory concerns Vitest's listening UI server, not the shipped static SPA: [GHSA-5xrq-8626-4rwp](https://github.com/advisories/GHSA-5xrq-8626-4rwp). Backend production reports include Nest, multer and transitive libraries; this code does not expose an upload route, so an installed multer advisory alone does not prove a reachable upload DoS. Direct js-yaml 4.3.2 and older transitive js-yaml instances must not be conflated.
+
+**Acceptance:** triage by installed version, dependency path and reachable feature; upgrade compatible parents/toolchain in a separate change; retain justified exceptions and run frozen installs plus build/tests/Docker checks. Do not use indiscriminate forced major upgrades as the fix.
+
+### AR-31 — P2: test coverage and status labels are being mistaken for proof
+
+**Locations:** `backend/src/modules/executor/execute.pure.spec.ts:13`; `workspace-bundle/workspace-bundle.spec.ts`; `frontend/src/editor/Editor.provenance.spec.tsx`; `frontend/tsconfig.json`; `REPORT.md` §§1,3,9.
+
+Concrete gaps:
+
+- “Pure” executor tests mock docker-client but not workspace-visibility, so they still launch a real Docker probe. The full run timed out; the isolated warmed retry passed. Pure tests need complete infrastructure substitution, and Docker suites need an actual daemon readiness probe.
+- Generator tests often assert strings and YAML round-trips, not Docker/provider validity. Workspace fixtures write `{}` as lockfiles; a green test says nothing about an actual installation/build.
+- The provenance suite contains tests named as execution-gate verification that only assert an unbound pipeline has no RunPanel, or detect a pipeline and assert no review banner. These do not exercise acknowledgement or restore provenance.
+- Canonical-order tests exist, but their shuffled documents are not driven through execution/export boundaries.
+- The CI step says “Typecheck source and tests”, while frontend tsconfig explicitly excludes spec files. Vitest transpilation is not equivalent to a full test typecheck.
+- The npm golden IR still contains pnpm lint/test commands; golden comparisons are not proof that all named package-manager fixtures are runnable.
+- `REPORT.md`'s “Green on every gate”, “Hardened”, “one open architectural item”, and “Nothing above blocks the product” should be qualified against the failing Docker build and findings here. Historical successful test runs need not be false to be insufficient.
+
+**Acceptance:** close findings with negative tests at the boundary that failed, link those tests to acceptance criteria, and update current status only after rerunning the actual gates. Keep the historical review/hardening record intact rather than silently rewriting past claims.
+
+## 7. Further hardening and explicit limits
+
+These are follow-ups or design decisions, not additional proven high-severity exploits:
+
+- **Synchronous filesystem work:** scanning, materializing copies and JSON persistence block the API event loop. Nested node_modules are intentionally copied by the current spec. Establish cancellation and byte/file/time budgets before adding concurrency.
+- **Secrets:** the current executor exclusion list does not exclude `.env`/`.npmrc`; network-enabled user commands can read copied credentials. This is not host-env inheritance or a container escape. Decide whether files are opt-in and show that policy before execution.
+- **Reproduction command:** RunPanel mounts the user's real `$PWD` read-write, omits the actual env/working directory and prior stage outputs, and calls it a reproduction. It does not reproduce the original isolated context. Prefer a retained, isolated workspace and an explicit full invocation.
+- **Multi-line editing:** imported scripts are displayed but edited through single-line HTML inputs (`StageChain.tsx` / WorkspaceStudio); edits can remove line boundaries. Use a textarea/script editor and test comments/heredocs through edit→export→run.
+- **Per-document UI identity:** RunPanel results and Doctor diagnoses can remain visible after the document changes. Associate them with a digest/session and mark them stale. Do not present an old passing run as proof of edited commands.
+- **Workspace completeness:** workspace-protocol dependencies and root lockfiles are not equivalent to independent services. Detection should warn about unsupported shared-workspace layouts instead of promising self-contained contexts.
+- **Accessibility:** folder/review dialogs use dialog roles but lack complete focus trapping/restoration; full browser, keyboard and screen-reader verification was not performed.
+- **Honest checks:** regex scanning for cloud command names is a scope heuristic, not a shell security policy; substring checks for FROM/CMD are not Dockerfile validation.
+- **Deferred architecture:** extracting a shared IR package (ADR-0018) remains reasonable, but is lower priority than the broken boundary behavior. Duplication of workspace types/emission rules is already causing divergence without requiring a sweeping rewrite first.
+
+## 8. Proposed implementation order
+
+1. **Contain filesystem effects and restore the build:** AR-01/02/03/04. Add symlink/special-file regression tests and a clean Docker build gate.
+2. **Prevent wrong-project and stale-state operations:** AR-05/06/07/08/09/23/28. Introduce a document-session identity and per-project persistence ordering; surface durability failures.
+3. **Make validation and execution agree:** AR-10/11/12/13/14/24/30. Specify context semantics and canonical execution order, then share the transformation.
+4. **Make exported artifacts operational:** AR-15/16/17/18/19/20/21/22/32. Validate provider structure, build representative outputs, and exercise a real generated service over HTTP.
+5. **Bound and recover execution:** AR-25/26/27. Test cancellation races, retention and reconnection without host exhaustion.
+6. **Close the evidence gap:** AR-29/31. Triage dependencies, fix the test boundaries, and revise `REPORT.md` with the actual resulting gate status.
+
+Each change should identify its existing requirement or draft the needed amendment before implementation. In particular, per-step context, GitLab cache transfer and before_script precedence expose problems in the current specification itself. Tests that faithfully encode an incorrect contract still need to change.
+
+### Closure bar
+
+A finding is closed only when its reproducer no longer exhibits the failure, a permanent test covers the intended behavior, affected spec/claims agree with that behavior, and the relevant real build/runtime gate passes. “The YAML parses”, “the component renders”, “the existing suite is green”, and “we added a warning elsewhere” are insufficient by themselves.
