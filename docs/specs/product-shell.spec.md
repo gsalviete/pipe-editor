@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Component | `PRODUCT` |
-| Status | Implemented |
+| Status | Implemented · amendment **Draft** (Hardening v2 Phase 1, 2026-09-23) — PRODUCT-FR-013, PRODUCT-NFR-007, PRODUCT-AC-012…013 await acceptance |
 | Accepted on | 2026-09-11 |
 | Linked brief | [`04-productization-brief.md`](../product/04-productization-brief.md) |
 
@@ -45,6 +45,15 @@ developer product without changing the provider-neutral Pipeline IR contract.
   depend on a remote font or visual asset to render correctly.
 - **PRODUCT-FR-012 — Bounded imports.** Pasted and workspace-backed CI files
   MUST share the documented 512 KiB byte limit, including non-ASCII content.
+- **PRODUCT-FR-013 — Contained CI-file reads.** *(Draft — Hardening v2
+  Phase 1, AR-02 / AR-03.)* A CI file imported from inside a workspace
+  project (`/api/import/from-project`) MUST be read through the contained
+  read of [STATE-FR-017](./state.spec.md#discovery) /
+  [ADR-0019](../adr/0019-filesystem-boundary-reads-and-writes.md), with the
+  project directory as the boundary and PRODUCT-FR-012's 512 KiB as the byte
+  budget, enforced on bytes read. A file that is outside the project, a
+  special file, or over the budget is refused promptly with the existing
+  error-envelope codes. The API stays responsive while it does so.
 
 ## Non-functional requirements
 
@@ -57,6 +66,13 @@ developer product without changing the provider-neutral Pipeline IR contract.
 - **PRODUCT-NFR-005.** Motion respects `prefers-reduced-motion`.
 - **PRODUCT-NFR-006.** A command that prints indefinitely MUST not grow backend
   or browser memory without bound while cancellation remains available.
+- **PRODUCT-NFR-007 — The production images are a standing gate.** *(Draft —
+  Hardening v2 Phase 1, AR-04.)* `docker build -f backend/Dockerfile .` and
+  `docker build -f frontend/Dockerfile .` MUST succeed from a clean checkout.
+  A passing `pnpm build` is not evidence for this requirement, because it
+  never executes a Dockerfile. The project's validation contract
+  (`docs/agents/validation.md`, `images:`) and the CI Compose smoke step both
+  exercise it.
 
 ## Acceptance criteria
 
@@ -73,6 +89,8 @@ developer product without changing the provider-neutral Pipeline IR contract.
 | **PRODUCT-AC-009** | `GET /api/health` returns a small non-sensitive readiness document without scanning the workspace or probing Docker. |
 | **PRODUCT-AC-010** | The built frontend contains its own favicon and no Google Fonts request. |
 | **PRODUCT-AC-011** | UTF-8 pasted content and CI files read from a project are rejected when their encoded size exceeds 512 KiB. |
+| **PRODUCT-AC-012** *(Draft)* | `POST /api/import/from-project` for a `.github/workflows/ci.yml` that is (a) a FIFO answers within 1 second with an error envelope while `GET /api/health` keeps answering; (b) a symlink to a file outside the project answers `PATH_OUTSIDE_WORKSPACE`; (c) a file whose bytes read exceed 512 KiB answers the size refusal. A normal in-project workflow still imports. | T-PRODUCT-012 (TASK-004) |
+| **PRODUCT-AC-013** *(Draft)* | From a clean checkout, both production images build, `docker compose up --build --wait` starts the stack, and `GET /api/health` and the frontend's `/health` both answer 200. | T-PRODUCT-013 (TASK-005; real build gate) |
 
 ## Notes
 
@@ -84,3 +102,10 @@ specs; it governs the cross-cutting product experience around them.
 Implementation was verified on 2026-09-11 through the specification-linked
 backend/frontend suites, production builds, Docker image builds and visual
 inspection at desktop and 390 × 844 mobile viewports.
+
+## Changelog
+
+| Date | Change |
+|---|---|
+| 2026-09-11 | Accepted and implemented (see Notes). |
+| 2026-09-23 | **Amendment — Draft** (Hardening v2 Phase 1, `tasks/TASK-001`), from the second adversarial review. **AR-04**: the frontend Dockerfile still copied files deleted by the Tailwind removal ([ADR-0017](../adr/0017-no-css-framework.md)), so the production image didn't build, and nothing but CI's Compose step exercised it. New **PRODUCT-NFR-007** makes the image build a standing gate, and **PRODUCT-AC-013** checks it with the health endpoints. **AR-02 / AR-03**: the project CI-file read checked `stat` size and then read by path. New **PRODUCT-FR-013** routes it through the contained read of STATE-FR-017 / [ADR-0019](../adr/0019-filesystem-boundary-reads-and-writes.md), checked by **PRODUCT-AC-012**. |
