@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Component | `WORKSPACE` |
-| Status | Implemented · amendment **Draft** (Hardening v2 Phase 1, 2026-09-23) — WORKSPACE-FR-014, WORKSPACE-AC-013 await acceptance |
+| Status | Implemented · amendment **Accepted** (Hardening v2 Phase 1, 2026-09-23) — WORKSPACE-FR-014, WORKSPACE-AC-013 accepted, awaiting implementation |
 | Accepted on | 2026-09-11 |
 | Implemented on | 2026-09-11 |
 | Product scope | [`05-local-workspace-scope.md`](../product/05-local-workspace-scope.md) |
@@ -68,7 +68,7 @@ cloud deployment semantics.
   Services. Generation MUST choose a deterministic, unused path and MUST NOT
   replace or reuse an existing Compose file path.
 
-- **WORKSPACE-FR-014 — Contained manifest reads.** *(Draft — Hardening v2
+- **WORKSPACE-FR-014 — Contained manifest reads.** *(Accepted — Hardening v2
   Phase 1, AR-02 / AR-03.)* Inspection MUST read every candidate service's
   `package.json` (and any other project file it reads) through the contained
   read of [STATE-FR-017](./state.spec.md#discovery) /
@@ -105,7 +105,7 @@ cloud deployment semantics.
 | **WORKSPACE-AC-010** | Single-project editor and generator tests remain green. |
 | **WORKSPACE-AC-011** | The UI can inspect a folder, select a service, edit its pipeline metadata/commands, choose Compose mode/provider and preview every artifact path. |
 | **WORKSPACE-AC-012** | Existing `docker-compose.yml`, `docker-compose.*.yml`, `compose.yml`, and equivalent YAML variants are reported to the user and force generation to a collision-free `docker-compose.pipe-editor*.yml` path in the same directory. |
-| **WORKSPACE-AC-013** *(Draft)* | Inspecting a workspace in which one candidate's `package.json` is a symlink outside that candidate's directory, and another candidate's is a FIFO, completes within 1 second, returns the healthy services, reports a warning for each refused candidate, and never includes the outside file's content. | T-WORKSPACE-013 (TASK-003) |
+| **WORKSPACE-AC-013** *(Accepted)* | Inspecting a workspace in which one candidate's `package.json` is a symlink outside that candidate's directory, and another candidate's is a FIFO, completes within 1 second, returns the healthy services, reports a warning for each refused candidate, and never includes the outside file's content. | T-WORKSPACE-013 (TASK-003) |
 
 ## Non-goals
 
@@ -126,3 +126,4 @@ kept outside the product.
 | 2026-09-11 | Marked Implemented after backend, HTTP, UI, regression, typecheck and production-build verification passed. |
 | 2026-09-12 | Added collision-safe tracking and naming for existing Compose files. |
 | 2026-09-23 | **Amendment — Draft** (Hardening v2 Phase 1, `tasks/TASK-001`), from the second adversarial review's **AR-02** / **AR-03**. WORKSPACE-FR-001 contains the inspected *directory*, but candidate manifests were then read by following their path. New **WORKSPACE-FR-014** routes them through the contained read of STATE-FR-017 / [ADR-0019](../adr/0019-filesystem-boundary-reads-and-writes.md), with each service directory as the boundary. New **WORKSPACE-AC-013**. |
+| 2026-09-23 | **Amendment accepted** (Hardening v2 Phase 1, `tasks/TASK-001`). The owner accepted WORKSPACE-FR-014 and WORKSPACE-AC-013, together with ADR-0019's contained-symlink policy, as proposed. The spec stays Implemented for its existing criteria; the new ones are Accepted and become Implemented when their tests pass. |

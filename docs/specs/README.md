@@ -31,6 +31,22 @@ A spec moves through these statuses, recorded in its header table:
 | **Implemented** | The component exists and all acceptance criteria are covered by passing tests. |
 | **Superseded** | Replaced by another spec. The file is kept and points to its replacement. |
 
+**Implemented, with Draft additions.** Amending an Implemented spec doesn't
+send the whole spec back to Draft. The spec keeps its Implemented status for
+the criteria already covered by passing tests. Only the new requirements and
+acceptance criteria carry their own status:
+
+- The header's Status field names both, for example
+  `Implemented · amendment **Draft** (<origin>, <date>) — <new IDs> await acceptance`.
+- Each new requirement and criterion is tagged inline, for example
+  `*(Draft — <origin>)*` or `| **<ID>** *(Draft)* |`.
+- The additions move through the same lifecycle. When they're accepted, the
+  tags and the Status field change to **Accepted** and a changelog row records
+  it. Implementation may then begin. When their tests pass, the tags are
+  removed and the spec is plainly Implemented again.
+- The changelog keeps the Draft row. Acceptance adds a row; it doesn't
+  rewrite history.
+
 Specs are **never deleted**. A superseded spec is marked `Superseded by …` in its
 header so the reasoning trail is preserved.
 
@@ -61,13 +77,13 @@ with a real consumer* before the expensive components are built.
 Update the **Status** column as specs progress. This table is the project's
 at-a-glance progress board.
 
-> **Pending amendments — Hardening v2 Phase 1 (Draft, 2026-09-23).**
-> `STATE`, `DET`, `WORKSPACE`, `PRODUCT` and `EXEC` carry Draft amendments
+> **Amendments — Hardening v2 Phase 1 (Accepted, 2026-09-23).**
+> `STATE`, `DET`, `WORKSPACE`, `PRODUCT` and `EXEC` carry Accepted amendments
 > from the second adversarial review (AR-01 to AR-04), argued in
 > [ADR-0019](../adr/0019-filesystem-boundary-reads-and-writes.md). Each
-> spec's existing criteria stay Implemented, and the new ones are Draft
-> until the owner accepts them. See each spec's Status field and changelog,
-> and [`06-hardening-v2.md`](../product/06-hardening-v2.md).
+> spec's existing criteria stay Implemented. The new ones are Accepted and
+> become Implemented when their tests pass. See each spec's Status field and
+> changelog, and [`06-hardening-v2.md`](../product/06-hardening-v2.md).
 
 ### Companion documents
 
