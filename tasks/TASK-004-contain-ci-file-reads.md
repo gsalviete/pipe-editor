@@ -29,9 +29,9 @@ describe('T-EDITOR-### (AR-02/AR-03) — CI file containment', () => {
     // Arrange: project/.github/workflows -> <outside>/wf with ci.yml
     // Act: scanProjects(root)
     // Assert: project.ciConfigs toEqual([])
-  it('POST /api/import/file refuses a FIFO at .github/workflows/ci.yml promptly')
+  it('POST /api/import/from-project refuses a FIFO at .github/workflows/ci.yml promptly')
     // Assert: response within 1s, status 400|404 with a stable error envelope code, health endpoint still answers
-  it('POST /api/import/file enforces 512 KiB on bytes read, not on stat size')
+  it('POST /api/import/from-project enforces 512 KiB on bytes read, not on stat size')
     // Assert: status 400, error.code 'INVALID_IR', message mentions the limit
   it('still imports a normal in-project workflow')
     // Assert: 200, provider 'github-actions'
