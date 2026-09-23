@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Component | `EXEC` |
-| Status | Implemented |
+| Status | Implemented · amendment **Draft** (Hardening v2 Phase 1, 2026-09-23) — EXEC-FR-016…017, EXEC-AC-018…019 await acceptance |
 | Last updated | 2026-06-22 |
 | Linked ADRs | [ADR-0001](../adr/0001-native-container-execution.md) (the reason this component exists), [ADR-0003](../adr/0003-ir-as-single-source-of-truth.md), [ADR-0006](../adr/0006-omit-on-uncertainty-default.md), [ADR-0007](../adr/0007-linear-pipeline-topology-v1.md) |
 | Linked specs | [`pipeline-ir.spec.md`](./pipeline-ir.spec.md) (Accepted), [`detector-engine.spec.md`](./detector-engine.spec.md) (Accepted), [`dockerfile-generator.spec.md`](./dockerfile-generator.spec.md) (Accepted), [`visual-editor.spec.md`](./visual-editor.spec.md) (Accepted) |
@@ -578,6 +578,36 @@ same probe — see [Testing approach](#testing-approach)).
   whether the run finished, failed, or aborted. The workspace temp
   copy MUST be removed unless `process.env.EXEC_KEEP_WORKSPACE`
   is set (debug aid, not part of the production contract).
+- **EXEC-FR-016 — Symlinks in the copy are copied, never followed by
+  the backend.** *(Draft — Hardening v2 Phase 1, AR-01.)* Materializing
+  the workspace copy (EXEC-FR-007) MUST reproduce a symlink as a
+  symlink, never as a copy of its target, because dereferencing would
+  read outside the project. Inside a Stage container a link resolves
+  against the container's filesystem, which contains only the copy's
+  mount, so links are harmless there. The **backend** MUST NOT write,
+  read or delete through a symlink inside the copy (see
+  [ADR-0019](../adr/0019-filesystem-boundary-reads-and-writes.md) § 3).
+  Removing the copy MUST NOT follow links.
+- **EXEC-FR-017 — The workspace visibility probe cannot touch
+  anything but its own marker.** *(Draft — Hardening v2 Phase 1,
+  AR-01; specifies the SEC-05 probe that already ships.)* Before any
+  Stage runs, the Executor proves that the Docker daemon can see the
+  copy: it writes a marker containing a fresh random value into the copy
+  and requires a throwaway, read-only, network-less container to read
+  the value back through the same mount. The marker:
+  - has an **unpredictable per-run name**;
+  - is created **exclusively and without following links**, so creation
+    fails if anything (file, directory or symlink, dangling or not)
+    already exists at that name;
+  - MUST be verified to be a regular file through the descriptor that
+    created it.
+
+  After the probe, on success **and** on failure, the Executor removes
+  the marker only if the entry at that name is still the file it
+  created (same identity). An entry the Executor didn't create is never
+  overwritten, truncated or removed. A probe failure is reported as it
+  is today (`WorkspaceNotVisibleError`); it never leaves a changed file
+  anywhere.
 
 ## Non-functional requirements
 
@@ -711,6 +741,8 @@ Each AC maps to a planned test. The split:
 | **EXEC-AC-015** | Two consecutive `execute()` calls on the same IR and unchanged `projectPath` produce equal per-Stage `status` and `exitCode` (timestamps differ). This is the "determinism on identical input" rule from EXEC-NFR-005. Tested with `docker` available; skipped otherwise. | T-EXEC-015 |
 | **EXEC-AC-016** *(Docker)* | **Workspace lifecycle.** Exclusions are applied ONCE at copy time, then `/workspace` is mutable across Stages. Verified behaviorally: run install → build on the canonical fixture, then assert that `dist/` (which the host tree does NOT contain — it was excluded on copy) exists inside the same temp-copy workspace after the build Stage finishes. This is the assertion that build's output reaches downstream Stages within the run; subsequent Stages can read it. | T-EXEC-016 |
 | **EXEC-AC-017** *(Docker)* | **Honest failure on absent upstream.** An IR derived from `node-pnpm-nest-basic` with the `install` Stage's `enabled` flag set to `false` and the rest of the chain enabled produces: `install: skipped:disabled`, then `lint: failed` (its command cannot find `node_modules` and exits non-zero), `test: skipped:dependency-failed`, `build: skipped:dependency-failed`, `docker-build: skipped:docker-build-delegated`, aggregate `failed`. `lint`'s `StageResult.stderr` MUST contain the package manager's actual missing-deps diagnostic (substring match on `node_modules` is sufficient). EXEC MUST NOT inject a synthetic message; the failure surfaces verbatim from the container. | T-EXEC-017 |
+| **EXEC-AC-018** *(Draft; Docker mocked)* | **Marker never writes through a link.** For each of: a symlink to a sentinel file **outside** the copy, a symlink to a file **inside** the copy, and a **dangling** symlink, placed at every name the probe could use (the legacy fixed name `.pipe-editor-visibility-probe`, and the new name when a test pins the random source): after `assertWorkspaceVisible` resolves **or** rejects (probe container mocked to fail), the sentinel's and the internal target's bytes are unchanged, the dangling target still doesn't exist, and each link is still a symlink. Inverts review probe R01. | T-EXEC-018 (TASK-002) |
+| **EXEC-AC-019** *(Draft; Docker mocked)* | **Only its own marker is removed.** A pre-existing regular file at the legacy marker name keeps its content. After the probe, success or failure, the copy's directory listing equals the listing taken before the probe. If the marker entry is replaced by another file between creation and cleanup, cleanup leaves it in place. | T-EXEC-019 (TASK-002) |
 
 ## Testing approach
 
@@ -833,3 +865,4 @@ are the cleanup that makes the rule single-sourced.
 | 2026-06-22 | **Accepted** 2026-06-22 after review. Implementation MAY begin. The three-amendment package (new `findUnrunnableReason` in `@modules/ir`; DOCKER `generate()` throws via the helper + DOCKER-AC-014 + changelog; EDITOR controller refactored to call the helper) lands together with the EXEC implementation, per the user's instruction. |
 | 2026-06-22 | Spec correction (stays Accepted) — added EXEC-FR-010b. Implementation against the `node-pnpm-nest-basic` fixture surfaced that per-Stage fresh containers cannot share the corepack-managed pnpm/yarn shim that `install` sets up — each downstream Stage's container has no shim and `pnpm: not found` aborts the chain. EXEC now prepends `corepack enable && ` to every Stage's shell command when PM is `pnpm`/`yarn`, and sets `COREPACK_HOME=/workspace/.corepack` so the binary download persists across Stages via the shared workspace mount. Mirrors the standalone `RUN corepack enable` the Dockerfile generator already emits per stage. `npm` Stages are unaffected (npm ships with node base images). |
 | 2026-09-13 | **Status: Accepted → Implemented.** From adversarial review finding **SDD-03**: every acceptance criterion in this spec is covered by a passing test, and has been for some time, but the status was never advanced — the progress board understated the project. Advanced together with IR, DOCKER, DET, EXEC and EDITOR after the traceability table was completed (the 17 missing EXEC-AC rows added, IR-AC-011's three halves reconciled). |
+| 2026-09-23 | **Amendment — Draft** (Hardening v2 Phase 1, `tasks/TASK-001`), from the second adversarial review's **AR-01**. The SEC-05 visibility probe shipped without a spec: it wrote a **fixed-name** marker with an ordinary write into a copy that preserves symlinks, so a project shipping a symlink under that name made the backend overwrite the link's target, possibly a host file outside the copy, before any Stage ran, even when the probe then failed (R01). New **EXEC-FR-016** states the copy's symlink treatment (copied as links, never followed by the backend, never dereferenced); new **EXEC-FR-017** specifies the probe and its marker (unpredictable name, exclusive no-follow creation, regular-file check, identity-checked removal). New **EXEC-AC-018…019**. Architecture: [ADR-0019](../adr/0019-filesystem-boundary-reads-and-writes.md) § 3. Nothing else in the Executor contract changes. |
