@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Accepted |
 | Date | 2026-09-23 |
 | Affected specs | `state.spec.md`, `detector-engine.spec.md`, `workspace-bundle.spec.md`, `product-shell.spec.md`, `pipeline-executor.spec.md` |
 | Origin | Adversarial review second pass: AR-01, AR-02, AR-03 ([`docs/reports/adversarial-review.md`](../reports/adversarial-review.md) §3); product [`06-hardening-v2.md`](../product/06-hardening-v2.md) Phase 1 |

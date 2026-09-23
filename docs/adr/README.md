@@ -31,7 +31,7 @@ were *reasoned*, not accidental.
 | [ADR-0016](./0016-local-state-persistence-and-share-links.md) | Where local state lives, and what a share link is | Accepted |
 | [ADR-0017](./0017-no-css-framework.md) | No CSS framework — Tailwind removed rather than adopted | Accepted |
 | [ADR-0018](./0018-ir-stays-a-source-alias-for-now.md) | The shared IR stays a source alias, for now | Accepted |
-| [ADR-0019](./0019-filesystem-boundary-reads-and-writes.md) | Contained regular-file reads and no-follow writes at the filesystem boundary | Draft |
+| [ADR-0019](./0019-filesystem-boundary-reads-and-writes.md) | Contained regular-file reads and no-follow writes at the filesystem boundary | Accepted |
 
 ## How to register a new decision
 
